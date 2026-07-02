@@ -1108,6 +1108,17 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     res.json({ ok: true, encerrado: chat.encerrado });
   });
 
+  /* exclui uma conversa (mensagens, acordo vinculado etc.) — só gerente, ação irreversível */
+  app.delete("/api/cobranca/chats/:id", auth, gerenteOnly, (req, res) => {
+    const chat = db.waChats[req.params.id];
+    if (!chat || chat.canal !== "oficial") return res.status(404).json({ error: "Conversa não encontrada" });
+    delete db.waChats[req.params.id];
+    // acordos que apontavam pra essa conversa ficam órfãos de propósito — mantém o histórico
+    // financeiro (parcelas, pagamentos já feitos) mesmo que a conversa em si seja apagada
+    salvar();
+    res.json({ ok: true });
+  });
+
   app.post("/api/cobranca/chats/:id/cobranca-estado", auth, (req, res) => {
     const chat = db.waChats[req.params.id];
     if (!chat || chat.canal !== "oficial") return res.status(404).json({ error: "Conversa não encontrada" });

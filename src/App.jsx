@@ -291,6 +291,16 @@ function Conversas() {
     try { await api.atribuirIAChat(ativoId, iaId); setChat(await api.chat(ativoId)); carregarLista(); } catch (e) { alert(e.message); }
   }
 
+  async function excluirConversa(id, e) {
+    e.stopPropagation();
+    if (!confirm("Excluir essa conversa? As mensagens somem pra sempre.")) return;
+    try {
+      await api.excluirChat(id);
+      if (ativoId === id) { setAtivoId(null); setChat(null); }
+      carregarLista();
+    } catch (e) { alert(e.message); }
+  }
+
   return (
     <div className="wa-page">
       <div className="wa-grid">
@@ -311,6 +321,7 @@ function Conversas() {
                   </div>
                 </div>
                 {c.naoLidas > 0 && <div className="wa-badge">{c.naoLidas}</div>}
+                <button className="btn btn-sm btn-ghost" style={{ color: "var(--coral)", flexShrink: 0 }} onClick={(e) => excluirConversa(c.id, e)}><I.trash style={{ width: 13, height: 13 }} /></button>
               </div>
             ))}
           </div>

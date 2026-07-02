@@ -69,6 +69,7 @@ export const api = {
   atribuir: (id, atendenteId) => req("POST", "/api/cobranca/chats/" + id + "/atribuir", { atendenteId }),
   atendentesLista: () => req("GET", "/api/cobranca/atendentes-lista"),
   encerrar: (id, encerrar) => req("POST", "/api/cobranca/chats/" + id + "/encerrar", { encerrar }),
+  excluirChat: (id) => req("DELETE", "/api/cobranca/chats/" + id),
   setEstadoCobranca: (id, estado, detalhes) => req("POST", "/api/cobranca/chats/" + id + "/cobranca-estado", { estado, detalhes }),
   confirmarAcordo: (id, dados) => req("POST", "/api/cobranca/chats/" + id + "/acordo/confirmar", dados),
   criarAcordoManual: (id, dados) => req("POST", "/api/cobranca/chats/" + id + "/acordo", dados),
