@@ -1025,6 +1025,10 @@ function DisparoScreen() {
     if (!numeroId) return setErro("Escolha um número");
     if (!template) return setErro("Escolha um template aprovado");
     if (!contatos.length) return setErro("Adicione ao menos um contato");
+    if (!iaId) {
+      const ok = confirm('Nenhuma IA selecionada. Quem responder vai direto pro atendente humano — a IA NÃO vai responder sozinha nessa campanha. Confirma que é isso mesmo?');
+      if (!ok) return;
+    }
     setEnviando(true);
     try {
       await api.disparar({ numeroId, template, iaId: iaId || null, nomeCampanha: nomeCampanha || template, contatos });
@@ -1131,7 +1135,10 @@ function DisparoScreen() {
           )}
 
           {erro && <div className="err">{erro}</div>}
-          <button className="btn btn-primary" disabled={enviando || !contatos.length} onClick={disparar} style={{ width: "100%", fontSize: 15, padding: "13px", marginTop: 16 }}>
+          <p style={{ fontSize: 12.5, margin: "0 0 8px", color: iaId ? "var(--mint)" : "var(--amber)", fontWeight: 600 }}>
+            {iaId ? `✓ IA vinculada: ${ias.find((i) => i.id === iaId)?.nome || "..."} — vai responder sozinha quem responder` : "⚠ Sem IA selecionada — quem responder vai direto pro atendente humano"}
+          </p>
+          <button className="btn btn-primary" disabled={enviando || !contatos.length} onClick={disparar} style={{ width: "100%", fontSize: 15, padding: "13px" }}>
             {enviando ? "Disparando..." : `Disparar pra ${contatos.length} contato(s)`}
           </button>
         </div>
