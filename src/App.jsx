@@ -560,7 +560,9 @@ function IABuilder({ ia, papelInicial, iasNegociadoras, onClose, onSaved }) {
     { k: "playbook", lb: "Roteiro" }, { k: "escalacao", lb: "Escalação" },
     { k: "conhecimento", lb: "Base de conhecimento" }, { k: "teste", lb: "Testar" },
   ];
-  const secoes = papel === "negociadora" ? SECOES_NEG : SECOES_SDR;
+  const secoes = papel === "sdr" ? SECOES_SDR : SECOES_NEG; // negociadora e completa usam as mesmas seções
+  const PAPEL_LABEL = { sdr: "SDR", negociadora: "Negociadora", completa: "IA Completa" };
+  const PAPEL_SUB = { sdr: "Qualifica e entende o motivo da inadimplência", negociadora: "Apresenta propostas dentro das regras que você definir", completa: "Qualifica e negocia na mesma conversa, do início ao fim" };
 
   async function salvar() {
     if (!nome.trim()) { setErro("Dê um nome pra IA"); setSecao("identidade"); return; }
@@ -591,10 +593,10 @@ function IABuilder({ ia, papelInicial, iasNegociadoras, onClose, onSaved }) {
       <div className="agx-modal">
         <div className="agx-head">
           <div className="agx-head-l">
-            <div className="agx-avatar">{papel === "negociadora" ? "N" : "S"}</div>
+            <div className="agx-avatar">{papel === "sdr" ? "S" : papel === "completa" ? "C" : "N"}</div>
             <div>
-              <div className="agx-title">{ia ? "Editar IA" : "Nova IA"} — {papel === "negociadora" ? "Negociadora" : "SDR"}</div>
-              <div className="agx-sub">{papel === "negociadora" ? "Apresenta propostas dentro das regras que você definir" : "Qualifica e entende o motivo da inadimplência"}</div>
+              <div className="agx-title">{ia ? "Editar IA" : "Nova IA"} — {PAPEL_LABEL[papel]}</div>
+              <div className="agx-sub">{PAPEL_SUB[papel]}</div>
             </div>
           </div>
           <div className="agx-head-r">

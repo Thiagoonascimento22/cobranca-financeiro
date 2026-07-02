@@ -482,7 +482,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       nome: lim(k.nome, 200), texto: lim(k.texto, 200000), criadoEm: k.criadoEm || Date.now(),
     }));
   }
-  function normalizaPapel(p) { return p === "negociadora" ? "negociadora" : "sdr"; }
+  function normalizaPapel(p) { return (p === "negociadora" || p === "completa") ? p : "sdr"; }
 
   function blocoComplianceEDadosDivida(nomeLead, divida) {
     const P = [];
@@ -591,13 +591,66 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     return P.join("\n");
   }
 
+  // IA ÚNICA — qualifica e negocia na mesma conversa, sem passagem entre "cérebros".
+  // Mais simples de configurar, mas sem a trava de nunca falar de dinheiro antes de qualificar.
+  function montarPromptCompleta(ia, nomeLead, divida) {
+    const c = ia.config || {};
+    const P = [];
+    P.push(`Você é ${ia.nome}, atendente do setor financeiro da Escola Instructiva, falando pelo WhatsApp com um aluno em atraso de pagamento. Você cuida da conversa do início ao fim: confirma identidade, entende o motivo do atraso, e conduz a negociação dentro das regras abaixo.`);
+    P.push(`Seu tom de voz é ${TOM_LABEL[c.tomVoz] || "profissional"}, sempre respeitoso.`);
+    if (c.objetivo) P.push(`SEU OBJETIVO: ${c.objetivo}`);
+    P.push(blocoComplianceEDadosDivida(nomeLead, divida));
+    if (c.quemEla) P.push(`\nQUEM VOCÊ É:\n${c.quemEla}`);
+    if (c.comoEscreve) P.push(`\nCOMO VOCÊ ESCREVE:\n${c.comoEscreve}`);
+    if (c.sempreFaz) P.push(`\nVOCÊ SEMPRE:\n${c.sempreFaz}`);
+    if (c.nuncaFaz) P.push(`\nVOCÊ NUNCA:\n${c.nuncaFaz}`);
+
+    P.push(`\nORDEM OBRIGATÓRIA DA CONVERSA — não pule etapas:`);
+    P.push(`1. Primeiro confirme que fala com o aluno certo.`);
+    P.push(`2. Depois pergunte com empatia o motivo do atraso — NÃO fale de valores, desconto ou parcelamento antes disso.`);
+    P.push(`3. Só depois que o aluno demonstrar disposição de resolver (ex.: "quero pagar", "como faço") é que você entra na negociação, seguindo as regras abaixo.`);
+
+    const regrasNeg = [];
+    if (c.formasPagamento) regrasNeg.push(`Formas de pagamento aceitas: ${c.formasPagamento}`);
+    if (c.parcelamentoMax) regrasNeg.push(`Pode oferecer parcelamento em até ${c.parcelamentoMax}x sem aprovação humana.`);
+    else regrasNeg.push(`NÃO pode oferecer parcelamento por conta própria — qualquer pedido de parcelas vai pra [PASSAR_HUMANO].`);
+    if (c.descontoMaximoPct) regrasNeg.push(`Pode oferecer no máximo ${c.descontoMaximoPct}% de desconto à vista sozinho(a). Desconto maior exige [PASSAR_HUMANO].`);
+    else regrasNeg.push(`NÃO pode oferecer desconto nenhum sozinho(a) — qualquer pedido de desconto vai pra [PASSAR_HUMANO].`);
+    if (c.regrasNegociacao) regrasNeg.push(c.regrasNegociacao);
+    P.push(`\nREGRAS DE NEGOCIAÇÃO (limite da sua autonomia):\n- ${regrasNeg.join("\n- ")}`);
+
+    if (c.objecoes && c.objecoes.length) {
+      P.push(`\nCOMO RESPONDER OBJEÇÕES:`);
+      c.objecoes.forEach((o) => { if (o.objecao) P.push(`- Se disser "${o.objecao}": ${o.resposta || ""}`); });
+    }
+    if (c.faq && c.faq.length) {
+      P.push(`\nPERGUNTAS FREQUENTES:`);
+      c.faq.forEach((q) => { if (q.pergunta) P.push(`- P: ${q.pergunta}\n  R: ${q.resposta || ""}`); });
+    }
+    const etapas = [
+      ["Abertura", c.pbAbertura], ["Confirmação de identidade", c.pbConfirmacao], ["Coleta do motivo", c.pbColeta],
+      ["Apresentação das opções de pagamento", c.pbNegociacao], ["Fechamento", c.pbFechamento], ["Recuperação (se sumir)", c.pbRecuperacao],
+    ].filter(([, v]) => v);
+    if (etapas.length) { P.push(`\nROTEIRO:`); etapas.forEach(([t, v], i) => P.push(`${i + 1}. ${t}: ${v}`)); }
+    const kb = (ia.conhecimento || []).filter((k) => k.texto);
+    if (kb.length) { P.push(`\nBASE DE CONHECIMENTO:`); kb.forEach((k) => P.push(`\n--- ${k.nome} ---\n${lim(k.texto, 40000)}`)); }
+
+    P.push(`\nQUANDO O ALUNO ACEITAR UMA CONDIÇÃO DENTRO DAS SUAS REGRAS: confirme os números com clareza e finalize com a tag [ACORDO_PROPOSTO: parcelas=N; valor_parcela=V; vencimento=YYYY-MM-DD] no final (nunca visível pro aluno).`);
+    P.push(`\nQUANDO PASSAR PRA UM HUMANO (tag [PASSAR_HUMANO] no final): disputa da dívida, pedido fora do seu limite de autonomia, menção a Procon/advogado/ação judicial, hostilidade, ou pedido explícito de falar com uma pessoa.`);
+    if (c.escQuando) P.push(`Além disso: ${c.escQuando}`);
+    P.push(`\nREGRA DA PASSAGEM: o aluno não percebe a troca. Última mensagem soa como continuidade natural${c.escFrase ? ` (ex.: "${c.escFrase}")` : ""}.`);
+    if (c.encerrarCriterios) P.push(`\nEncerre/pare de insistir quando: ${c.encerrarCriterios}`);
+    P.push(`\nREGRAS GERAIS: mensagens curtas de WhatsApp, nunca diga que é IA, nunca invente valores/datas. Nome do aluno só se confirmado. Emojis simples e raros.`);
+    return P.join("\n");
+  }
+
   function montarSystemPrompt(ia, chat) {
     const nomeLead = chat ? chat.nome : "";
     const divida = chat ? chat.divida : null;
     const motivo = chat ? chat.motivoInadimplencia : "";
-    return ia.papel === "negociadora"
-      ? montarPromptNegociadora(ia, nomeLead, divida, motivo)
-      : montarPromptSDR(ia, nomeLead, divida);
+    if (ia.papel === "negociadora") return montarPromptNegociadora(ia, nomeLead, divida, motivo);
+    if (ia.papel === "completa") return montarPromptCompleta(ia, nomeLead, divida);
+    return montarPromptSDR(ia, nomeLead, divida);
   }
 
   async function chamarModelo(systemPrompt, historico) {
@@ -668,13 +721,17 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
   async function rodarIA(chat, numeroCfg) {
     try {
       garantirEstrutura();
-      if (db.cobranca.iaGlobalAtiva === false) return;
+      console.log(`[cobranca] rodarIA chamada — chat=${chat.id} iaId=${chat.iaId || "(nenhuma)"} iaPausada=${!!chat.iaPausada} iaGlobalAtiva=${db.cobranca.iaGlobalAtiva !== false}`);
+      if (db.cobranca.iaGlobalAtiva === false) { console.log("[cobranca] rodarIA abortou: botão de pânico geral está desligado"); return; }
       const ia = (db.cobranca.ias || []).find((x) => x.id === chat.iaId);
-      if (!ia || !ia.ativa) return;
+      if (!ia) { console.log(`[cobranca] rodarIA abortou: chat.iaId=${chat.iaId} não corresponde a nenhuma IA cadastrada`); return; }
+      if (!ia.ativa) { console.log(`[cobranca] rodarIA abortou: IA "${ia.nome}" está marcada como pausada (ativa=false)`); return; }
+      console.log(`[cobranca] rodarIA chamando o modelo pra IA "${ia.nome}" (papel=${ia.papel})`);
       const system = montarSystemPrompt(ia, chat);
       const histDireto = (chat.mensagens || []).slice(-24);
       let resposta = await chamarModelo(system, histDireto);
-      if (!resposta) return;
+      if (!resposta) { console.log("[cobranca] rodarIA: o modelo devolveu resposta vazia"); return; }
+      console.log(`[cobranca] rodarIA: resposta recebida do modelo (${resposta.length} caracteres), enviando...`);
 
       let passarHumano = false, passarNegociadora = false, acordoProposto = null;
 
@@ -1196,6 +1253,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
             } else if (chat.origemDisparo) chat.respondeu = true;
 
             const temIA = chat.iaId && !chat.iaPausada;
+            console.log(`[cobranca] webhook: mensagem recebida no chat ${chat.id} — chat.iaId=${chat.iaId || "(nenhuma)"} iaPausada=${!!chat.iaPausada} → ${temIA ? "chamando rodarIA" : "sem IA, vai pro humano"}`);
             if (temIA) rodarIA(chat, numeroCfg);
             else {
               if (chat.divida && chat.estadoCobranca === "nao_contatado") chat.estadoCobranca = "em_conversa";
