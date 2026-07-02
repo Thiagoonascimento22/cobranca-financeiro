@@ -1409,6 +1409,8 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     return {
       elevenAgentId: v.elevenAgentId || "", elevenPhoneNumberId: v.elevenPhoneNumberId || "",
       temElevenKey: !!v.elevenApiKey,
+      companyName: v.companyName || "Escola Instructiva", agentName: v.agentName || "Ana",
+      descontoMaxPct: v.descontoMaxPct || 0, origemDebitoPadrao: v.origemDebitoPadrao || "",
       // Twilio: só referência/documentação — quem usa as credenciais é a própria ElevenLabs
       // (importadas lá no dashboard dela), a gente não liga direto pra API do Twilio
       twilioAccountSid: v.twilioAccountSid || "", twilioNumero: v.twilioNumero || "",
@@ -1432,6 +1434,10 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (b.elevenApiKey) v.elevenApiKey = lim(b.elevenApiKey, 200);
     if (b.elevenAgentId !== undefined) v.elevenAgentId = lim(b.elevenAgentId, 100);
     if (b.elevenPhoneNumberId !== undefined) v.elevenPhoneNumberId = lim(b.elevenPhoneNumberId, 100);
+    if (b.companyName !== undefined) v.companyName = lim(b.companyName, 100);
+    if (b.agentName !== undefined) v.agentName = lim(b.agentName, 60);
+    if (b.descontoMaxPct !== undefined) v.descontoMaxPct = Math.max(0, Math.min(100, Number(b.descontoMaxPct) || 0));
+    if (b.origemDebitoPadrao !== undefined) v.origemDebitoPadrao = lim(b.origemDebitoPadrao, 200);
     salvar();
     res.json(vozPublica(v));
   });
@@ -1448,12 +1454,16 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     try {
       const divida = chat.divida || {};
       const atraso = diasDeAtraso(divida.vencimento);
+      // esses nomes precisam bater EXATAMENTE com as variáveis {{...}} usadas no prompt do agente na ElevenLabs
       const dynamic_variables = {
-        nome_aluno: chat.nome || "",
-        valor_divida: divida.valor ? fmtMoedaBR(divida.valor) : "",
-        vencimento: divida.vencimento ? fmtDataBR(divida.vencimento) : "",
-        dias_atraso: atraso !== null ? String(Math.max(0, atraso)) : "",
-        motivo_atraso: chat.motivoInadimplencia || "",
+        debtor_name: chat.nome || "",
+        valor_formatado: divida.valor ? fmtMoedaBR(divida.valor) : "",
+        vencimento_br: divida.vencimento ? fmtDataBR(divida.vencimento) : "",
+        dias_atraso: atraso !== null ? String(Math.max(0, atraso)) : "0",
+        origem_debito: chat.motivoInadimplencia || v.origemDebitoPadrao || "Mensalidade em atraso",
+        company_name: v.companyName || "Escola Instructiva",
+        agent_name: v.agentName || "Ana",
+        desconto_pct: String(v.descontoMaxPct || 0),
       };
       const r = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
         method: "POST",

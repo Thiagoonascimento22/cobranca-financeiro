@@ -1302,7 +1302,7 @@ function AcordosScreen() {
    ============================================================ */
 function LigacoesScreen() {
   const [v, setV] = useState(null);
-  const [form, setForm] = useState({ twilioAccountSid: "", twilioAuthToken: "", twilioNumero: "", elevenApiKey: "", elevenAgentId: "", elevenPhoneNumberId: "" });
+  const [form, setForm] = useState({ twilioAccountSid: "", twilioAuthToken: "", twilioNumero: "", elevenApiKey: "", elevenAgentId: "", elevenPhoneNumberId: "", companyName: "", agentName: "", descontoMaxPct: 0, origemDebitoPadrao: "" });
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -1310,7 +1310,7 @@ function LigacoesScreen() {
     try {
       const r = await api.vozConfig();
       setV(r);
-      setForm((f) => ({ ...f, twilioAccountSid: r.twilioAccountSid, twilioNumero: r.twilioNumero, elevenAgentId: r.elevenAgentId, elevenPhoneNumberId: r.elevenPhoneNumberId }));
+      setForm((f) => ({ ...f, twilioAccountSid: r.twilioAccountSid, twilioNumero: r.twilioNumero, elevenAgentId: r.elevenAgentId, elevenPhoneNumberId: r.elevenPhoneNumberId, companyName: r.companyName, agentName: r.agentName, descontoMaxPct: r.descontoMaxPct, origemDebitoPadrao: r.origemDebitoPadrao }));
     } catch (_) {}
   }
   useEffect(() => { carregar(); }, []);
@@ -1362,8 +1362,20 @@ function LigacoesScreen() {
             <h4 className="agx-h" style={{ marginBottom: 12 }}>ElevenLabs (obrigatório pra ligar)</h4>
             <div className="field"><label>API Key {v && v.temElevenKey && <span className="cob-pill on" style={{ marginLeft: 6 }}>já salva</span>}</label><input className="input" type="password" value={form.elevenApiKey} onChange={(e) => setForm({ ...form, elevenApiKey: e.target.value })} placeholder={v && v.temElevenKey ? "•••••••• (deixe em branco pra manter)" : ""} /></div>
             <div className="row2">
-              <div className="field"><label>Agent ID</label><input className="input" value={form.elevenAgentId} onChange={(e) => setForm({ ...form, elevenAgentId: e.target.value })} /></div>
+              <div className="field"><label>Agent ID</label><input className="input" value={form.elevenAgentId} onChange={(e) => setForm({ ...form, elevenAgentId: e.target.value })} placeholder="agent_01..." /></div>
               <div className="field"><label>Phone Number ID</label><input className="input" value={form.elevenPhoneNumberId} onChange={(e) => setForm({ ...form, elevenPhoneNumberId: e.target.value })} placeholder="do passo 1" /></div>
+            </div>
+
+            <div className="agx-sep" />
+            <h4 className="agx-h" style={{ marginBottom: 6 }}>Variáveis que o agente usa</h4>
+            <p className="agx-psub">Precisa bater com o que o prompt do seu agente espera (`{"{{company_name}}"}`, `{"{{agent_name}}"}` etc).</p>
+            <div className="row2">
+              <div className="field"><label>Nome da empresa ({"{{company_name}}"})</label><input className="input" value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} placeholder="Escola Instructiva" /></div>
+              <div className="field"><label>Nome do agente ({"{{agent_name}}"})</label><input className="input" value={form.agentName} onChange={(e) => setForm({ ...form, agentName: e.target.value })} placeholder="Ana" /></div>
+            </div>
+            <div className="row2">
+              <div className="field"><label>Desconto máximo à vista % ({"{{desconto_pct}}"})</label><input className="input" type="number" min="0" max="100" value={form.descontoMaxPct} onChange={(e) => setForm({ ...form, descontoMaxPct: Number(e.target.value) })} /></div>
+              <div className="field"><label>Origem do débito padrão ({"{{origem_debito}}"})</label><input className="input" value={form.origemDebitoPadrao} onChange={(e) => setForm({ ...form, origemDebitoPadrao: e.target.value })} placeholder="Mensalidade em atraso" /></div>
             </div>
 
             <div className="agx-sep" />
