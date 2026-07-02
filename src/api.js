@@ -74,4 +74,11 @@ export const api = {
   // pós-acordo
   acordos: () => req("GET", "/api/cobranca/acordos"),
   pagarParcela: (acordoId, numero) => req("POST", "/api/cobranca/acordos/" + acordoId + "/parcelas/" + numero + "/pagar"),
+
+  // painel / métricas
+  metricas: () => req("GET", "/api/cobranca/metricas"),
+
+  // voz (Twilio + ElevenLabs)
+  vozConfig: () => req("GET", "/api/cobranca/voz-config"),
+  setVozConfig: (dados) => req("PUT", "/api/cobranca/voz-config", dados),
 };

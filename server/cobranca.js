@@ -1194,5 +1194,75 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     res.json({ verifyToken: db.cobranca.verifyToken });
   });
 
+  /* ============================================================
+     PAINEL — métricas agregadas pro dashboard
+     ============================================================ */
+  app.get("/api/cobranca/metricas", auth, gerenteOnly, (req, res) => {
+    garantirEstrutura();
+    const chats = Object.values(db.waChats).filter((c) => c.canal === "oficial");
+    const comDivida = chats.filter((c) => c.divida);
+    let totalPendente = 0, totalOriginal = 0;
+    const porEstado = { nao_contatado: 0, em_conversa: 0, negociando: 0, acordo_fechado: 0, pago: 0, perdido: 0 };
+    for (const c of comDivida) {
+      const estado = c.estadoCobranca || "nao_contatado";
+      if (porEstado[estado] !== undefined) porEstado[estado]++;
+      totalOriginal += Number(c.divida.valor) || 0;
+      if (estado !== "pago") totalPendente += Number(c.divida.valor) || 0;
+    }
+    let totalRecuperado = 0, parcelasPendentes = 0, parcelasAtrasadas = 0;
+    const acordos = db.cobranca.acordos || [];
+    for (const a of acordos) {
+      for (const p of a.parcelas) {
+        if (p.status === "pago") totalRecuperado += Number(p.valor) || 0;
+        else if (p.status === "atrasado") parcelasAtrasadas++;
+        else parcelasPendentes++;
+      }
+    }
+    const acordosAtivos = acordos.filter((a) => !a.quebrado && a.parcelas.some((p) => p.status !== "pago")).length;
+    const acordosQuebrados = acordos.filter((a) => a.quebrado).length;
+    const totalComDivida = comDivida.length || 1;
+    const taxaConversao = Math.round(((porEstado.acordo_fechado + porEstado.pago) / totalComDivida) * 100);
+    const respondendoIA = chats.filter((c) => c.iaId && !c.iaPausada).length;
+    const aguardandoHumano = chats.filter((c) => c.atendenteId && c.iaId && c.iaPausada && !c.encerrado).length;
+    res.json({
+      totalPendente, totalOriginal, totalRecuperado, porEstado,
+      totalContatos: comDivida.length, acordosAtivos, acordosQuebrados,
+      parcelasPendentes, parcelasAtrasadas, taxaConversao,
+      respondendoIA, aguardandoHumano,
+      conversasAtivas: chats.filter((c) => !c.encerrado).length,
+    });
+  });
+
+  /* ============================================================
+     VOZ — configuração de Twilio + ElevenLabs (ligações). Guarda as
+     credenciais agora; o motor de discagem/IA de voz entra na próxima etapa.
+     ============================================================ */
+  function vozPublica(v) {
+    return {
+      twilioAccountSid: v.twilioAccountSid || "", twilioNumero: v.twilioNumero || "",
+      temTwilioToken: !!v.twilioAuthToken,
+      elevenAgentId: v.elevenAgentId || "", temElevenKey: !!v.elevenApiKey,
+      ativo: !!v.ativo,
+    };
+  }
+  app.get("/api/cobranca/voz-config", auth, gerenteOnly, (req, res) => {
+    garantirEstrutura();
+    if (!db.cobranca.voz) db.cobranca.voz = {};
+    res.json(vozPublica(db.cobranca.voz));
+  });
+  app.put("/api/cobranca/voz-config", auth, gerenteOnly, (req, res) => {
+    garantirEstrutura();
+    if (!db.cobranca.voz) db.cobranca.voz = {};
+    const v = db.cobranca.voz, b = req.body || {};
+    if (b.twilioAccountSid !== undefined) v.twilioAccountSid = lim(b.twilioAccountSid, 100);
+    if (b.twilioAuthToken) v.twilioAuthToken = lim(b.twilioAuthToken, 200);
+    if (b.twilioNumero !== undefined) v.twilioNumero = lim(b.twilioNumero, 40);
+    if (b.elevenApiKey) v.elevenApiKey = lim(b.elevenApiKey, 200);
+    if (b.elevenAgentId !== undefined) v.elevenAgentId = lim(b.elevenAgentId, 100);
+    if (b.ativo !== undefined) v.ativo = !!b.ativo;
+    salvar();
+    res.json(vozPublica(v));
+  });
+
   return { tick };
 }
