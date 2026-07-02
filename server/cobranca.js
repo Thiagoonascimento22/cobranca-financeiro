@@ -1401,20 +1401,25 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
   });
 
   /* ============================================================
-     VOZ — configuração de Twilio + ElevenLabs (ligações). Guarda as
-     credenciais agora; o motor de discagem/IA de voz entra na próxima etapa.
+     VOZ — ligações via ElevenLabs (integração nativa com Twilio).
+     A ElevenLabs cuida do áudio/telefonia de verdade — a gente só pede
+     pra discar (passando o contexto do aluno) e recebe o resumo depois.
      ============================================================ */
   function vozPublica(v) {
     return {
+      elevenAgentId: v.elevenAgentId || "", elevenPhoneNumberId: v.elevenPhoneNumberId || "",
+      temElevenKey: !!v.elevenApiKey,
+      // Twilio: só referência/documentação — quem usa as credenciais é a própria ElevenLabs
+      // (importadas lá no dashboard dela), a gente não liga direto pra API do Twilio
       twilioAccountSid: v.twilioAccountSid || "", twilioNumero: v.twilioNumero || "",
       temTwilioToken: !!v.twilioAuthToken,
-      elevenAgentId: v.elevenAgentId || "", temElevenKey: !!v.elevenApiKey,
-      ativo: !!v.ativo,
+      webhookToken: v.webhookToken || "",
     };
   }
   app.get("/api/cobranca/voz-config", auth, gerenteOnly, (req, res) => {
     garantirEstrutura();
     if (!db.cobranca.voz) db.cobranca.voz = {};
+    if (!db.cobranca.voz.webhookToken) { db.cobranca.voz.webhookToken = "el_" + Math.random().toString(36).slice(2, 12); salvar(); }
     res.json(vozPublica(db.cobranca.voz));
   });
   app.put("/api/cobranca/voz-config", auth, gerenteOnly, (req, res) => {
@@ -1426,9 +1431,87 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (b.twilioNumero !== undefined) v.twilioNumero = lim(b.twilioNumero, 40);
     if (b.elevenApiKey) v.elevenApiKey = lim(b.elevenApiKey, 200);
     if (b.elevenAgentId !== undefined) v.elevenAgentId = lim(b.elevenAgentId, 100);
-    if (b.ativo !== undefined) v.ativo = !!b.ativo;
+    if (b.elevenPhoneNumberId !== undefined) v.elevenPhoneNumberId = lim(b.elevenPhoneNumberId, 100);
     salvar();
     res.json(vozPublica(v));
+  });
+
+  /* dispara uma ligação de verdade pro aluno dessa conversa */
+  app.post("/api/cobranca/chats/:id/ligar", auth, gerenteOnly, async (req, res) => {
+    garantirEstrutura();
+    const chat = db.waChats[req.params.id];
+    if (!chat || chat.canal !== "oficial") return res.status(404).json({ error: "Conversa não encontrada" });
+    const v = db.cobranca.voz || {};
+    if (!v.elevenApiKey) return res.status(400).json({ error: "Configure a API Key da ElevenLabs em Ligações primeiro" });
+    if (!v.elevenAgentId) return res.status(400).json({ error: "Configure o Agent ID da ElevenLabs em Ligações primeiro" });
+    if (!v.elevenPhoneNumberId) return res.status(400).json({ error: "Falta o Phone Number ID (o número Twilio precisa estar importado no painel da ElevenLabs primeiro)" });
+    try {
+      const divida = chat.divida || {};
+      const atraso = diasDeAtraso(divida.vencimento);
+      const dynamic_variables = {
+        nome_aluno: chat.nome || "",
+        valor_divida: divida.valor ? fmtMoedaBR(divida.valor) : "",
+        vencimento: divida.vencimento ? fmtDataBR(divida.vencimento) : "",
+        dias_atraso: atraso !== null ? String(Math.max(0, atraso)) : "",
+        motivo_atraso: chat.motivoInadimplencia || "",
+      };
+      const r = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "xi-api-key": v.elevenApiKey },
+        body: JSON.stringify({
+          agent_id: v.elevenAgentId,
+          agent_phone_number_id: v.elevenPhoneNumberId,
+          to_number: "+" + normalizaTelefone(chat.numero),
+          conversation_initiation_client_data: { dynamic_variables },
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.success) return res.status(400).json({ error: data.message || "A ElevenLabs recusou a ligação" });
+      if (!Array.isArray(chat.notas)) chat.notas = [];
+      chat.notas.push({ tipo: "ligacao_iniciada", texto: `${req.user.nome} iniciou uma ligação de voz (IA) pra esse aluno`, ts: Date.now(), por: req.user.nome });
+      chat.mensagens.push({ role: "me", content: "📞 Ligação de voz iniciada (IA)", ts: Date.now(), ligacao: true, elevenConversationId: data.conversation_id });
+      chat.atualizadoEm = Date.now();
+      salvar();
+      res.json({ ok: true, conversationId: data.conversation_id, callSid: data.callSid });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  /* webhook de pós-ligação da ElevenLabs — recebe o resumo/transcrição quando a ligação termina.
+     Configura essa URL + o token (que aparece na tela de Ligações) no painel da ElevenLabs,
+     em Settings -> Webhooks -> Post-call. */
+  app.post("/api/cobranca/webhook-elevenlabs/:token", async (req, res) => {
+    garantirEstrutura();
+    if (!db.cobranca.voz || req.params.token !== db.cobranca.voz.webhookToken) return res.status(403).json({ error: "token inválido" });
+    res.json({ ok: true }); // confirma recebimento rápido, processa em seguida
+    try {
+      const b = req.body || {};
+      const dados = b.data || b; // formato pode variar, tenta os dois níveis
+      const conversationId = dados.conversation_id || dados.conversationId;
+      const transcriptResumo = (dados.analysis && dados.analysis.transcript_summary) || dados.summary || "";
+      const numeroChamado = (dados.metadata && dados.metadata.phone_call && dados.metadata.phone_call.external_number) || dados.to_number || "";
+      // acha a conversa pela nota que guardamos com o elevenConversationId, ou pelo número discado
+      let chatAlvo = null;
+      for (const c of Object.values(db.waChats)) {
+        if (!c || c.canal !== "oficial") continue;
+        if ((c.mensagens || []).some((m) => m.elevenConversationId === conversationId)) { chatAlvo = c; break; }
+      }
+      if (!chatAlvo && numeroChamado) {
+        chatAlvo = Object.values(db.waChats).find((c) => c && c.canal === "oficial" && nucleoTelefone(c.numero) === nucleoTelefone(numeroChamado));
+      }
+      if (chatAlvo) {
+        const ts = Date.now();
+        chatAlvo.mensagens.push({ role: "me", content: `📞 Ligação encerrada — resumo: ${transcriptResumo || "(sem resumo disponível)"}`, ts, ligacao: true });
+        chatAlvo.atualizadoEm = ts;
+        chatAlvo.naoLidas = (chatAlvo.naoLidas || 0) + 1;
+        if (!Array.isArray(chatAlvo.notas)) chatAlvo.notas = [];
+        chatAlvo.notas.push({ tipo: "ligacao_concluida", texto: "Ligação de voz concluída — resumo registrado na conversa", ts, por: "ElevenLabs" });
+        salvar();
+      }
+    } catch (e) {
+      console.error("[cobranca] erro no webhook da ElevenLabs:", e.message);
+    }
   });
 
   return { tick };

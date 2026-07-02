@@ -244,6 +244,7 @@ function Conversas() {
   const [texto, setTexto] = useState("");
   const [busca, setBusca] = useState("");
   const [ias, setIas] = useState([]);
+  const [ligando, setLigando] = useState(false);
   const msgsRef = useRef(null);
   const [showFab, irParaBaixo] = useScrollFab(msgsRef, [chat && chat.mensagens && chat.mensagens.length]);
 
@@ -289,6 +290,15 @@ function Conversas() {
   async function mudarIA(iaId) {
     if (!ativoId) return;
     try { await api.atribuirIAChat(ativoId, iaId); setChat(await api.chat(ativoId)); carregarLista(); } catch (e) { alert(e.message); }
+  }
+
+  async function ligar() {
+    if (!ativoId) return;
+    setLigando(true);
+    try {
+      await api.ligar(ativoId);
+      setChat(await api.chat(ativoId));
+    } catch (e) { alert(e.message); } finally { setLigando(false); }
   }
 
   async function excluirConversa(id, e) {
@@ -339,6 +349,7 @@ function Conversas() {
                   <div className="num">{chat.numero}{chat.divida && chat.divida.vencimento ? ` · venc. ${chat.divida.vencimento}` : ""}</div>
                 </div>
                 <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                  <button className="btn btn-sm btn-ghost" disabled={ligando} onClick={ligar} title="Ligar por voz (IA)"><I.phone style={{ width: 14, height: 14 }} /> {ligando ? "Ligando..." : "Ligar"}</button>
                   <select className="select" value={chat.iaId || ""} onChange={(e) => mudarIA(e.target.value)} title="Qual IA cuida dessa conversa">
                     <option value="">Sem IA (humano)</option>
                     {ias.map((i) => <option key={i.id} value={i.id}>{i.nome} ({i.papel})</option>)}
@@ -1291,12 +1302,16 @@ function AcordosScreen() {
    ============================================================ */
 function LigacoesScreen() {
   const [v, setV] = useState(null);
-  const [form, setForm] = useState({ twilioAccountSid: "", twilioAuthToken: "", twilioNumero: "", elevenApiKey: "", elevenAgentId: "" });
+  const [form, setForm] = useState({ twilioAccountSid: "", twilioAuthToken: "", twilioNumero: "", elevenApiKey: "", elevenAgentId: "", elevenPhoneNumberId: "" });
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
   async function carregar() {
-    try { const r = await api.vozConfig(); setV(r); setForm((f) => ({ ...f, twilioAccountSid: r.twilioAccountSid, twilioNumero: r.twilioNumero, elevenAgentId: r.elevenAgentId })); } catch (_) {}
+    try {
+      const r = await api.vozConfig();
+      setV(r);
+      setForm((f) => ({ ...f, twilioAccountSid: r.twilioAccountSid, twilioNumero: r.twilioNumero, elevenAgentId: r.elevenAgentId, elevenPhoneNumberId: r.elevenPhoneNumberId }));
+    } catch (_) {}
   }
   useEffect(() => { carregar(); }, []);
 
@@ -1305,46 +1320,74 @@ function LigacoesScreen() {
     setSalvando(true); setMsg("");
     try {
       await api.setVozConfig(form);
-      setMsg("Credenciais salvas.");
+      setMsg("Salvo.");
       carregar();
     } catch (e) { setMsg("Erro: " + e.message); } finally { setSalvando(false); }
   }
 
+  const urlWebhookEl = typeof window !== "undefined" && v ? `${window.location.origin}/api/cobranca/webhook-elevenlabs/${v.webhookToken}` : "";
+
   return (
     <div className="content">
       <div className="page-head">
-        <div><h2>Ligações</h2><p>Twilio + ElevenLabs, pra quando o WhatsApp não é suficiente.</p></div>
+        <div><h2>Ligações</h2><p>IA de voz via ElevenLabs, usando seu número Twilio — pra quando o WhatsApp não é suficiente.</p></div>
       </div>
+
       <div className="cob-card">
-        <div className="cob-card-h"><h3>Ligações com IA de voz <span className="soon-badge">em construção</span></h3></div>
+        <div className="cob-card-h"><h3>Como funciona</h3></div>
         <div className="cob-card-body">
-          <p className="agx-psub">
-            Aqui vamos conectar a Twilio (para discar de verdade) com a ElevenLabs (para a IA conversar por voz), pro casos que
-            o WhatsApp não resolve — inadimplente que não responde texto, por exemplo. O motor de ligação (discagem automática,
-            fluxo da conversa por voz e transcrição pro mesmo histórico da conversa) entra na próxima etapa. Por enquanto, já dá
-            pra deixar as credenciais salvas.
+          <p className="agx-psub" style={{ margin: 0 }}>
+            A ElevenLabs cuida de toda a parte de telefonia/áudio em tempo real — a gente só manda o pedido pra discar
+            (com o nome, valor e vencimento do aluno) e recebe de volta o resumo da ligação, que aparece na mesma
+            conversa do WhatsApp. Não precisa construir nenhuma infraestrutura de telefonia própria.
           </p>
         </div>
       </div>
 
       <div className="cob-card">
-        <div className="cob-card-h"><h3>Twilio</h3></div>
+        <div className="cob-card-h"><h3>Passo 1 — Importar seu número Twilio na ElevenLabs</h3></div>
+        <div className="cob-card-body">
+          <p className="agx-psub">
+            No painel da ElevenLabs (elevenlabs.io → Agents → Phone Numbers), importa seu número Twilio informando o
+            Account SID e o Auth Token dele. Depois de importado, cria (ou usa) um Agente de voz e vincula esse número
+            a ele. A ElevenLabs te dá um <strong>Phone Number ID</strong> — é esse valor que vai no campo abaixo.
+          </p>
+        </div>
+      </div>
+
+      <div className="cob-card">
+        <div className="cob-card-h"><h3>Passo 2 — Credenciais</h3></div>
         <div className="cob-card-body">
           <form onSubmit={salvar}>
+            <h4 className="agx-h" style={{ marginBottom: 12 }}>ElevenLabs (obrigatório pra ligar)</h4>
+            <div className="field"><label>API Key {v && v.temElevenKey && <span className="cob-pill on" style={{ marginLeft: 6 }}>já salva</span>}</label><input className="input" type="password" value={form.elevenApiKey} onChange={(e) => setForm({ ...form, elevenApiKey: e.target.value })} placeholder={v && v.temElevenKey ? "•••••••• (deixe em branco pra manter)" : ""} /></div>
+            <div className="row2">
+              <div className="field"><label>Agent ID</label><input className="input" value={form.elevenAgentId} onChange={(e) => setForm({ ...form, elevenAgentId: e.target.value })} /></div>
+              <div className="field"><label>Phone Number ID</label><input className="input" value={form.elevenPhoneNumberId} onChange={(e) => setForm({ ...form, elevenPhoneNumberId: e.target.value })} placeholder="do passo 1" /></div>
+            </div>
+
+            <div className="agx-sep" />
+            <h4 className="agx-h" style={{ marginBottom: 12 }}>Twilio (só referência — quem usa é a ElevenLabs)</h4>
             <div className="row2">
               <div className="field"><label>Account SID</label><input className="input" value={form.twilioAccountSid} onChange={(e) => setForm({ ...form, twilioAccountSid: e.target.value })} placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" /></div>
               <div className="field"><label>Número Twilio</label><input className="input" value={form.twilioNumero} onChange={(e) => setForm({ ...form, twilioNumero: e.target.value })} placeholder="+55 44 9xxxx-xxxx" /></div>
             </div>
             <div className="field"><label>Auth Token {v && v.temTwilioToken && <span className="cob-pill on" style={{ marginLeft: 6 }}>já salvo</span>}</label><input className="input" type="password" value={form.twilioAuthToken} onChange={(e) => setForm({ ...form, twilioAuthToken: e.target.value })} placeholder={v && v.temTwilioToken ? "•••••••• (deixe em branco pra manter)" : ""} /></div>
 
-            <div className="agx-sep" />
-            <h4 className="agx-h" style={{ marginBottom: 12 }}>ElevenLabs</h4>
-            <div className="field"><label>Agent ID (Conversational AI)</label><input className="input" value={form.elevenAgentId} onChange={(e) => setForm({ ...form, elevenAgentId: e.target.value })} /></div>
-            <div className="field"><label>API Key {v && v.temElevenKey && <span className="cob-pill on" style={{ marginLeft: 6 }}>já salva</span>}</label><input className="input" type="password" value={form.elevenApiKey} onChange={(e) => setForm({ ...form, elevenApiKey: e.target.value })} placeholder={v && v.temElevenKey ? "•••••••• (deixe em branco pra manter)" : ""} /></div>
-
             {msg && <div className="agx-psub" style={{ color: msg.startsWith("Erro") ? "var(--coral)" : "var(--mint)" }}>{msg}</div>}
-            <button className="btn btn-primary" disabled={salvando}>{salvando ? "Salvando..." : "Salvar credenciais"}</button>
+            <button className="btn btn-primary" disabled={salvando}>{salvando ? "Salvando..." : "Salvar"}</button>
           </form>
+        </div>
+      </div>
+
+      <div className="cob-card">
+        <div className="cob-card-h"><h3>Passo 3 — Webhook de pós-ligação (opcional, mas recomendado)</h3></div>
+        <div className="cob-card-body">
+          <p className="agx-psub">
+            Configura essa URL no painel da ElevenLabs em <strong>Settings → Webhooks → Post-call</strong>, pra que o
+            resumo de cada ligação apareça automaticamente na conversa do WhatsApp do aluno.
+          </p>
+          <div className="field"><label>URL do webhook</label><input className="input" readOnly value={urlWebhookEl} onClick={(e) => e.target.select()} /></div>
         </div>
       </div>
     </div>

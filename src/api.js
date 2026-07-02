@@ -84,4 +84,5 @@ export const api = {
   // voz (Twilio + ElevenLabs)
   vozConfig: () => req("GET", "/api/cobranca/voz-config"),
   setVozConfig: (dados) => req("PUT", "/api/cobranca/voz-config", dados),
+  ligar: (chatId) => req("POST", "/api/cobranca/chats/" + chatId + "/ligar"),
 };
