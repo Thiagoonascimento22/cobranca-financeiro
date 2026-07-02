@@ -563,7 +563,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     P.push(`\nQUANDO PASSAR PRA NEGOCIAÇÃO (tag [PASSAR_NEGOCIADORA] no final): assim que o aluno confirmar a própria identidade e demonstrar QUALQUER disposição em resolver a pendência (ex.: "quero pagar", "como faço", "posso parcelar", "vou ver isso"), passe. Antes da tag, se o aluno contou o motivo do atraso, resuma em UMA frase curta usando o formato [MOTIVO: resumo aqui] logo antes de [PASSAR_NEGOCIADORA] (essas duas tags não aparecem pro aluno).`);
     P.push(`\nQUANDO PASSAR DIRETO PRO HUMANO (tag [PASSAR_HUMANO] no final, SEM passar pela negociadora): o aluno disputa a dívida (diz que já pagou, não reconhece, não fez o curso), menciona Procon/advogado/ação judicial, fica hostil, ou pede pra falar com uma pessoa/gerente.`);
     if (c.escQuando) P.push(`Além disso: ${c.escQuando}`);
-    P.push(`\nREGRA DA PASSAGEM: o aluno NÃO PERCEBE a troca de atendente, seja pra negociação ou pro humano. Nunca diga que vai "transferir" ou "chamar alguém". Sua última mensagem deve soar como continuidade natural${c.escFrase ? ` (ex.: "${c.escFrase}")` : ""}. As tags nunca aparecem pro aluno.`);
+    P.push(`\nREGRA DA PASSAGEM: o aluno NÃO PERCEBE a troca de atendente, seja pra negociação ou pro humano. PROIBIDO usar as palavras "transferir", "encaminhar", "equipe", "setor", "chamar alguém", "outra pessoa" ou qualquer variação que sugira que outra pessoa/IA vai assumir. Sua última mensagem antes da tag deve soar como você mesma dando continuidade — uma pergunta ou comentário natural${c.escFrase ? `, por exemplo: "${c.escFrase}"` : ', por exemplo: "Que bom! Deixa eu ver as melhores opções pra você" ou "Perfeito, já te passo como fica"'}. As tags nunca aparecem pro aluno.`);
     if (c.encerrarCriterios) P.push(`\nEncerre/pare de insistir quando: ${c.encerrarCriterios}`);
     P.push(`\nREGRAS GERAIS: mensagens curtas de WhatsApp, uma ideia por vez, nunca diga que é IA. Nunca invente valores ou datas. Nome do aluno só se confirmado. Emojis simples e raros (🙂 😊 👍).`);
     return P.join("\n");
@@ -610,7 +610,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     P.push(`\nQUANDO O ALUNO ACEITAR UMA CONDIÇÃO DENTRO DAS SUAS REGRAS: confirme os números com clareza e finalize com a tag [ACORDO_PROPOSTO: parcelas=N; valor_parcela=V; vencimento=YYYY-MM-DD] no final (nunca visível pro aluno), onde N é o nº de parcelas (1 se à vista), V o valor de cada parcela em número puro (ex: 250.00) e vencimento a data da primeira parcela. Isso registra o acordo pra confirmação — diga ao aluno que ele vai receber a confirmação por aqui mesmo, sem mencionar "sistema" ou "confirmação humana".`);
     P.push(`\nQUANDO PASSAR PRA UM HUMANO (tag [PASSAR_HUMANO] no final): pedido fora do seu limite de autonomia (mais parcelas, mais desconto), disputa da dívida, menção a Procon/advogado/ação judicial, hostilidade, ou pedido explícito de falar com uma pessoa.`);
     if (c.escQuando) P.push(`Além disso: ${c.escQuando}`);
-    P.push(`\nREGRA DA PASSAGEM: o aluno não percebe a troca. Última mensagem soa como continuidade natural${c.escFrase ? ` (ex.: "${c.escFrase}")` : ""}.`);
+    P.push(`\nREGRA DA PASSAGEM: o aluno NÃO PERCEBE a troca. PROIBIDO usar "transferir", "encaminhar", "equipe", "setor" ou qualquer palavra que sugira outra pessoa assumindo. Última mensagem antes da tag soa como você mesma continuando${c.escFrase ? `, ex.: "${c.escFrase}"` : ', ex.: "Deixa eu confirmar isso rapidinho" ou "Perfeito, já te retorno com os detalhes"'}.`);
     if (c.encerrarCriterios) P.push(`\nEncerre/pare de insistir quando: ${c.encerrarCriterios}`);
     P.push(`\nREGRAS GERAIS: mensagens curtas de WhatsApp, nunca diga que é IA, nunca invente valores/datas/links fora do que está acima. Emojis simples e raros.`);
     return P.join("\n");
@@ -663,7 +663,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     P.push(`\nQUANDO O ALUNO ACEITAR UMA CONDIÇÃO DENTRO DAS SUAS REGRAS: confirme os números com clareza e finalize com a tag [ACORDO_PROPOSTO: parcelas=N; valor_parcela=V; vencimento=YYYY-MM-DD] no final (nunca visível pro aluno).`);
     P.push(`\nQUANDO PASSAR PRA UM HUMANO (tag [PASSAR_HUMANO] no final): disputa da dívida, pedido fora do seu limite de autonomia, menção a Procon/advogado/ação judicial, hostilidade, ou pedido explícito de falar com uma pessoa.`);
     if (c.escQuando) P.push(`Além disso: ${c.escQuando}`);
-    P.push(`\nREGRA DA PASSAGEM: o aluno não percebe a troca. Última mensagem soa como continuidade natural${c.escFrase ? ` (ex.: "${c.escFrase}")` : ""}.`);
+    P.push(`\nREGRA DA PASSAGEM: o aluno NÃO PERCEBE a troca. PROIBIDO usar "transferir", "encaminhar", "equipe", "setor" ou qualquer palavra que sugira outra pessoa assumindo. Última mensagem antes da tag soa como você mesma continuando${c.escFrase ? `, ex.: "${c.escFrase}"` : ', ex.: "Deixa eu confirmar isso rapidinho" ou "Perfeito, já te retorno com os detalhes"'}.`);
     if (c.encerrarCriterios) P.push(`\nEncerre/pare de insistir quando: ${c.encerrarCriterios}`);
     P.push(`\nREGRAS GERAIS: mensagens curtas de WhatsApp, nunca diga que é IA, nunca invente valores/datas. Nome do aluno só se confirmado. Emojis simples e raros.`);
     return P.join("\n");
@@ -790,6 +790,8 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
 
       if (!Array.isArray(chat.notas)) chat.notas = [];
 
+      let precisaContinuarComProximaIA = false;
+
       if (passarHumano) {
         chat.iaPausada = true;
         atribuirAtendente(chat);
@@ -802,6 +804,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
         chat.iaId = ia.proximaIaId; // troca de "cérebro" na mesma conversa, sem o aluno perceber
         chat.estadoCobranca = "negociando";
         chat.notas.push({ tipo: "sdr_para_negociadora", texto: `${ia.nome} (SDR) qualificou e encaminhou pra negociação${chat.motivoInadimplencia ? " — motivo: " + chat.motivoInadimplencia : ""}`, ts: Date.now(), por: ia.nome });
+        precisaContinuarComProximaIA = true; // a Negociadora já continua na hora, sem esperar o aluno falar de novo
       } else if (ia.papel === "sdr" && chat.estadoCobranca === "nao_contatado") {
         chat.estadoCobranca = "em_conversa";
       }
@@ -817,6 +820,10 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
 
       if (chat.notas.length > 100) chat.notas = chat.notas.slice(-100);
       salvar();
+
+      if (precisaContinuarComProximaIA) {
+        await rodarIA(chat, numeroCfg); // chama a Negociadora imediatamente, usando o mesmo histórico
+      }
     } catch (e) {
       console.error("[cobranca] erro rodarIA:", e.message);
     }
