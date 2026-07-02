@@ -57,6 +57,7 @@ export const api = {
   // disparo / campanhas
   disparar: (dados) => req("POST", "/api/cobranca/disparar", dados),
   campanhas: () => req("GET", "/api/cobranca/campanhas"),
+  campanha: (id) => req("GET", "/api/cobranca/campanhas/" + id),
   retomarCampanha: (id) => req("POST", "/api/cobranca/campanhas/" + id + "/retomar"),
   excluirCampanha: (id) => req("DELETE", "/api/cobranca/campanhas/" + id),
 

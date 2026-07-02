@@ -841,6 +841,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       iaId: iaCampanha ? iaCampanha.id : null, iaNome: iaCampanha ? iaCampanha.nome : null,
       enviados: 0, entregues: 0, lidos: 0, responderam: 0, falhas: 0, total: contatos.length,
       pendentes: contatos.map((c) => ({ telefone: c.telefone, nome: c.nome || "", variaveis: c.variaveis || [], divida: sanitizaDivida(c.divida) })),
+      envios: [], // log permanente por contato (telefone, nome, status, erro, ts) — sobrevive mesmo depois da fila esvaziar
       status: "rodando", criadoEm: Date.now(),
     };
     db.cobranca.campanhas.unshift(campanha);
@@ -852,6 +853,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
   async function processarFilaCampanha(campanhaId, numeroCfg) {
     const campanha = (db.cobranca.campanhas || []).find((x) => x.id === campanhaId);
     if (!campanha || campanha._rodando) return;
+    if (!Array.isArray(campanha.envios)) campanha.envios = [];
     campanha._rodando = true;
     campanha.status = "rodando";
     while (campanha.pendentes && campanha.pendentes.length > 0) {
@@ -859,13 +861,18 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       if (!dentroDoHorario()) { await new Promise((r) => setTimeout(r, 10 * 60 * 1000)); continue; }
       const c = campanha.pendentes[0];
       const telefone = normalizaTelefone(c.telefone);
-      if (!telefone) { campanha.falhas++; campanha.pendentes.shift(); salvar(); continue; }
+      if (!telefone) {
+        campanha.falhas++;
+        campanha.envios.push({ telefone: c.telefone || "", nome: c.nome || "", status: "falha", erro: "Telefone inválido", ts: Date.now() });
+        campanha.pendentes.shift(); salvar(); continue;
+      }
       const nome = (c.nome || "").trim() || telefone;
       try {
         const resp = await enviarTemplate(numeroCfg, telefone, campanha.template, campanha.idioma, c.variaveis || []);
         campanha.enviados++;
         const mid = resp && resp.messages && resp.messages[0] && resp.messages[0].id;
         if (mid) { if (!db.cobranca.msgCampanha) db.cobranca.msgCampanha = {}; db.cobranca.msgCampanha[mid] = campanha.id; }
+        campanha.envios.push({ telefone, nome, status: "enviado", statusEntrega: "enviado", mid: mid || null, ts: Date.now() });
         const chat = acharOuCriarChat(numeroCfg.id, telefone, nome);
         chat.origemDisparo = true; chat.campanha = campanha.nome; chat.campanhaId = campanha.id;
         chat.iaId = campanha.iaId || null; chat.iaPausada = false;
@@ -877,8 +884,10 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
         chat.atualizadoEm = ts;
       } catch (e) {
         campanha.falhas++;
+        campanha.envios.push({ telefone, nome, status: "falha", erro: e.message, ts: Date.now() });
         console.error("[cobranca] falha disparo p/", telefone, ":", e.message);
       }
+      if (campanha.envios.length > 5000) campanha.envios = campanha.envios.slice(-5000);
       campanha.pendentes.shift();
       salvar();
       await new Promise((r) => setTimeout(r, 120));
@@ -901,7 +910,13 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
 
   app.get("/api/cobranca/campanhas", auth, gerenteOnly, (req, res) => {
     garantirEstrutura();
-    res.json((db.cobranca.campanhas || []).map((c) => ({ ...c, pendentes: undefined, pendentesCount: c.pendentes ? c.pendentes.length : 0 })));
+    res.json((db.cobranca.campanhas || []).map((c) => ({ ...c, pendentes: undefined, envios: undefined, pendentesCount: c.pendentes ? c.pendentes.length : 0 })));
+  });
+  app.get("/api/cobranca/campanhas/:id", auth, gerenteOnly, (req, res) => {
+    const c = (db.cobranca.campanhas || []).find((x) => x.id === req.params.id);
+    if (!c) return res.status(404).json({ error: "Campanha não encontrada" });
+    const numeroCfg = acharNumero(c.numeroId);
+    res.json({ ...c, pendentes: undefined, pendentesCount: c.pendentes ? c.pendentes.length : 0, numeroApelido: numeroCfg ? numeroCfg.apelido : "" });
   });
   app.delete("/api/cobranca/campanhas/:id", auth, gerenteOnly, (req, res) => {
     const antes = (db.cobranca.campanhas || []).length;
@@ -1178,8 +1193,15 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
             if (!campId) continue;
             const camp = (db.cobranca.campanhas || []).find((x) => x.id === campId);
             if (!camp) continue;
-            if (st.status === "delivered") camp.entregues = (camp.entregues || 0) + 1;
-            if (st.status === "read") camp.lidos = (camp.lidos || 0) + 1;
+            const envio = Array.isArray(camp.envios) ? camp.envios.find((e) => e.mid === mid) : null;
+            if (st.status === "delivered") { camp.entregues = (camp.entregues || 0) + 1; if (envio) envio.statusEntrega = "entregue"; }
+            if (st.status === "read") { camp.lidos = (camp.lidos || 0) + 1; if (envio) envio.statusEntrega = "lido"; }
+            if (st.status === "failed") {
+              // a Meta aceitou a chamada da API mas NÃO conseguiu entregar de verdade — esse é o erro real
+              const erroDetalhe = (st.errors && st.errors[0] && st.errors[0].title) || "Falha na entrega (não especificado pela Meta)";
+              if (envio) { envio.statusEntrega = "falhou_entrega"; envio.erro = erroDetalhe; }
+              camp.falhas = (camp.falhas || 0) + 1;
+            }
           }
         }
       }

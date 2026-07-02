@@ -778,6 +778,59 @@ function IAsScreen() {
 /* ============================================================
    DISPARO EM MASSA — CSV ou adição manual
    ============================================================ */
+function CampanhaDrawer({ campanhaId, onClose }) {
+  const [c, setC] = useState(null);
+  const [erro, setErro] = useState("");
+  useEffect(() => {
+    let cancelado = false;
+    function carregar() { api.campanha(campanhaId).then((r) => { if (!cancelado) setC(r); }).catch((e) => setErro(e.message)); }
+    carregar();
+    const t = setInterval(carregar, 4000);
+    return () => { cancelado = true; clearInterval(t); };
+  }, [campanhaId]);
+
+  const STATUS_LABEL = { enviado: "Enviado", entregue: "Entregue", lido: "Lido", falhou_entrega: "Falhou na entrega", falha: "Falha ao enviar" };
+  const STATUS_COR = { enviado: "em_conversa", entregue: "negociando", lido: "pago", falhou_entrega: "perdido", falha: "perdido" };
+
+  return (
+    <>
+      <div className="scrim" onClick={onClose} />
+      <div className="drawer">
+        <div className="drawer-h">
+          <h3>{c ? c.nome : "Carregando..."}</h3>
+          <button className="x-btn" onClick={onClose}><I.x /></button>
+        </div>
+        <div className="drawer-body">
+          {erro && <div className="err">{erro}</div>}
+          {!c ? <div className="spin" /> : (
+            <>
+              <div className="dash-grid" style={{ gridTemplateColumns: "repeat(2, 1fr)", marginBottom: 16 }}>
+                <div className="dash-card" style={{ padding: 12 }}><div className="lab">Enviados</div><div className="val" style={{ fontSize: 20 }}>{c.enviados}/{c.total}</div></div>
+                <div className="dash-card good" style={{ padding: 12 }}><div className="lab">Responderam</div><div className="val" style={{ fontSize: 20 }}>{c.responderam}</div></div>
+                <div className="dash-card" style={{ padding: 12 }}><div className="lab">Entregues</div><div className="val" style={{ fontSize: 20 }}>{c.entregues}</div></div>
+                <div className="dash-card warn" style={{ padding: 12 }}><div className="lab">Falhas</div><div className="val" style={{ fontSize: 20 }}>{c.falhas}</div></div>
+              </div>
+              <p className="agx-psub">Número: <strong>{c.numeroApelido}</strong> · Template: <strong>{c.template}</strong> · Status: {c.status}{c.pendentesCount > 0 ? ` (${c.pendentesCount} na fila)` : ""}</p>
+              <div className="agx-sep" />
+              <h4 className="agx-h">Por contato</h4>
+              {(!c.envios || c.envios.length === 0) && <div className="cob-empty">Nenhum envio registrado ainda.</div>}
+              {(c.envios || []).slice().reverse().map((e, i) => (
+                <div className="cob-row" key={i} style={{ padding: "10px 0" }}>
+                  <div className="info">
+                    <div className="nm">{e.nome || e.telefone}</div>
+                    <div className="sub">{e.telefone}{e.erro ? " — " + e.erro : ""}</div>
+                  </div>
+                  <span className={"estado-badge " + (STATUS_COR[e.statusEntrega || e.status] || "nao_contatado")}>{STATUS_LABEL[e.statusEntrega || e.status] || e.status}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function DisparoScreen() {
   const [numeros, setNumeros] = useState([]);
   const [ias, setIas] = useState([]);
@@ -793,7 +846,11 @@ function DisparoScreen() {
   const [enviando, setEnviando] = useState(false);
   const [modo, setModo] = useState("csv");
   const [manual, setManual] = useState({ nome: "", telefone: "", valor: "", vencimento: "", codigoAluno: "" });
+  const [campanhaAberta, setCampanhaAberta] = useState(null);
   const fileRef = useRef(null);
+
+  const templateInfo = templates.find((t) => t.name === template) || null;
+  const nVars = templateInfo ? templateInfo.vars : 0;
 
   async function carregar() {
     try { setNumeros(await api.numeros()); } catch (_) {}
@@ -806,6 +863,9 @@ function DisparoScreen() {
     if (!numeroId) { setTemplates([]); return; }
     api.templates(numeroId).then((r) => setTemplates(r.templates || [])).catch(() => setTemplates([]));
   }, [numeroId]);
+
+  // sempre que trocar de template, limpa a lista (as variáveis mudam o formato dos contatos)
+  useEffect(() => { setContatos([]); }, [template]);
 
   function onArquivo(e) {
     const f = e.target.files[0];
@@ -821,15 +881,27 @@ function DisparoScreen() {
         const idxVenc = header.findIndex((h) => h.includes("vencimento") || h.includes("venc"));
         const idxCod = header.findIndex((h) => h.includes("codigo") || h.includes("matricula"));
         if (idxTel < 0) { setErro("Não achei a coluna de telefone no CSV. Cabeçalho encontrado: " + header.join(", ")); return; }
-        const out = linhas.map((l) => ({
-          nome: idxNome >= 0 ? l[idxNome] : "",
-          telefone: l[idxTel],
-          divida: {
-            valor: idxValor >= 0 ? l[idxValor].replace(",", ".") : "",
-            vencimento: idxVenc >= 0 ? l[idxVenc] : "",
-            codigoAluno: idxCod >= 0 ? l[idxCod] : "",
-          },
-        })).filter((c) => c.telefone);
+        // colunas de variável: "variavel1", "var1", "variavel2"... se não achar, usa o nome como {{1}}
+        const idxVars = [];
+        for (let n = 1; n <= Math.max(nVars, 1); n++) {
+          idxVars.push(header.findIndex((h) => h === "variavel" + n || h === "var" + n));
+        }
+        const out = linhas.map((l) => {
+          const nome = idxNome >= 0 ? l[idxNome] : "";
+          const variaveis = [];
+          for (let n = 0; n < nVars; n++) {
+            const idx = idxVars[n];
+            variaveis.push(idx >= 0 && l[idx] ? l[idx] : (n === 0 ? nome : ""));
+          }
+          return {
+            nome, telefone: l[idxTel], variaveis,
+            divida: {
+              valor: idxValor >= 0 ? l[idxValor].replace(",", ".") : "",
+              vencimento: idxVenc >= 0 ? l[idxVenc] : "",
+              codigoAluno: idxCod >= 0 ? l[idxCod] : "",
+            },
+          };
+        }).filter((c) => c.telefone);
         setContatos(out);
         setErro("");
       } catch (e) { setErro("Erro ao ler o CSV: " + e.message); }
@@ -839,7 +911,9 @@ function DisparoScreen() {
 
   function adicionarManual() {
     if (!manual.telefone.trim()) { setErro("Informe o telefone"); return; }
-    setContatos([...contatos, { nome: manual.nome, telefone: manual.telefone, divida: { valor: manual.valor, vencimento: manual.vencimento, codigoAluno: manual.codigoAluno } }]);
+    const variaveis = [];
+    for (let n = 0; n < nVars; n++) variaveis.push(manual["var" + n] || (n === 0 ? manual.nome : ""));
+    setContatos([...contatos, { nome: manual.nome, telefone: manual.telefone, variaveis, divida: { valor: manual.valor, vencimento: manual.vencimento, codigoAluno: manual.codigoAluno } }]);
     setManual({ nome: "", telefone: "", valor: "", vencimento: "", codigoAluno: "" });
     setErro("");
   }
@@ -862,22 +936,35 @@ function DisparoScreen() {
   return (
     <div className="content">
       <div className="cob-card">
-        <div className="cob-card-h"><h3>Nova campanha de cobrança</h3></div>
+        <div className="cob-card-h"><h3>1. Número e template</h3></div>
         <div className="cob-card-body">
           <div className="row2">
             <div className="field"><label>Número</label>
-              <select className="select" value={numeroId} onChange={(e) => setNumeroId(e.target.value)}>
+              <select className="select" value={numeroId} onChange={(e) => { setNumeroId(e.target.value); setTemplate(""); }}>
                 <option value="">Selecione</option>
                 {numeros.map((n) => <option key={n.id} value={n.id}>{n.apelido}</option>)}
               </select>
             </div>
             <div className="field"><label>Template aprovado (Meta)</label>
-              <select className="select" value={template} onChange={(e) => setTemplate(e.target.value)}>
-                <option value="">Selecione</option>
-                {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+              <select className="select" value={template} onChange={(e) => setTemplate(e.target.value)} disabled={!numeroId}>
+                <option value="">{numeroId ? "Selecione" : "Escolha um número primeiro"}</option>
+                {templates.map((t) => <option key={t.name} value={t.name}>{t.name}{t.vars ? ` (${t.vars} variável${t.vars > 1 ? "eis" : ""})` : ""}</option>)}
               </select>
             </div>
           </div>
+          {templateInfo && (
+            <div style={{ background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 10, padding: 12, fontSize: 13, color: "var(--muted)" }}>
+              <strong style={{ color: "var(--text)" }}>Prévia do template:</strong> {templateInfo.texto}
+              {nVars > 0 && <div style={{ marginTop: 4 }}>Esse template tem {nVars} variável(is) — no CSV, use colunas <code>variavel1</code>, <code>variavel2</code>... (se não existirem, {"{{1}}"} usa o nome automaticamente).</div>}
+            </div>
+          )}
+          {templates.length === 0 && numeroId && <p className="agx-psub" style={{ marginTop: 8 }}>Nenhum template aprovado encontrado pra esse número ainda. Cria um em Meta for Developers → WhatsApp → Message Templates.</p>}
+        </div>
+      </div>
+
+      <div className="cob-card">
+        <div className="cob-card-h"><h3>2. IA e nome da campanha</h3></div>
+        <div className="cob-card-body">
           <div className="row2">
             <div className="field"><label>IA que assume quando o aluno responder</label>
               <select className="select" value={iaId} onChange={(e) => setIaId(e.target.value)}>
@@ -887,7 +974,12 @@ function DisparoScreen() {
             </div>
             <div className="field"><label>Nome da campanha</label><input className="input" value={nomeCampanha} onChange={(e) => setNomeCampanha(e.target.value)} placeholder="Ex: Cobrança julho/2026" /></div>
           </div>
+        </div>
+      </div>
 
+      <div className="cob-card">
+        <div className="cob-card-h"><h3>3. Quem vai receber</h3></div>
+        <div className="cob-card-body">
           <div className="tabs">
             <button className={modo === "csv" ? "on" : ""} onClick={() => setModo("csv")}>Importar CSV</button>
             <button className={modo === "manual" ? "on" : ""} onClick={() => setModo("manual")}>Adicionar manualmente</button>
@@ -898,19 +990,24 @@ function DisparoScreen() {
               <input id="csv-input" ref={fileRef} type="file" accept=".csv,text/csv" onChange={onArquivo} />
               <I.upload className="ic" />
               <div className="t">{arquivoNome || "Clique para escolher o arquivo CSV"}</div>
-              <div className="s">colunas: nome, telefone, valor, vencimento, código do aluno</div>
+              <div className="s">colunas: nome, telefone, valor, vencimento, código do aluno{nVars > 0 ? ", variavel1..." + nVars : ""}</div>
             </label>
           ) : (
             <div>
               <div className="row2">
                 <div className="field"><label>Nome</label><input className="input" value={manual.nome} onChange={(e) => setManual({ ...manual, nome: e.target.value })} /></div>
-                <div className="field"><label>Telefone</label><input className="input" value={manual.telefone} onChange={(e) => setManual({ ...manual, telefone: e.target.value })} placeholder="11999999999" /></div>
+                <div className="field"><label>Telefone</label><input className="input" value={manual.telefone} onChange={(e) => setManual({ ...manual, telefone: e.target.value })} placeholder="44999998888 (com DDD, sem espaço)" /></div>
               </div>
               <div className="row2">
                 <div className="field"><label>Valor</label><input className="input" value={manual.valor} onChange={(e) => setManual({ ...manual, valor: e.target.value })} placeholder="350.00" /></div>
                 <div className="field"><label>Vencimento</label><input className="input" type="date" value={manual.vencimento} onChange={(e) => setManual({ ...manual, vencimento: e.target.value })} /></div>
               </div>
               <div className="field"><label>Código do aluno</label><input className="input" value={manual.codigoAluno} onChange={(e) => setManual({ ...manual, codigoAluno: e.target.value })} /></div>
+              {nVars > 0 && Array.from({ length: nVars }).map((_, n) => (
+                <div className="field" key={n}><label>Variável {"{{" + (n + 1) + "}}"}{n === 0 ? " (padrão: nome)" : ""}</label>
+                  <input className="input" value={manual["var" + n] || ""} onChange={(e) => setManual({ ...manual, ["var" + n]: e.target.value })} placeholder={n === 0 ? manual.nome || "usa o nome se deixar em branco" : ""} />
+                </div>
+              ))}
               <button className="btn btn-primary btn-sm" onClick={adicionarManual}><I.plus style={{ width: 14, height: 14 }} /> Adicionar à lista</button>
             </div>
           )}
@@ -918,13 +1015,14 @@ function DisparoScreen() {
           {contatos.length > 0 && (
             <div className="contatos-preview">
               <table>
-                <thead><tr><th>Nome</th><th>Telefone</th><th>Valor</th><th>Vencimento</th><th></th></tr></thead>
+                <thead><tr><th>Nome</th><th>Telefone</th><th>Valor</th><th>Vencimento</th>{nVars > 0 && <th>Variáveis</th>}<th></th></tr></thead>
                 <tbody>
                   {contatos.map((c, i) => (
                     <tr key={i}>
                       <td>{c.nome || "—"}</td><td>{c.telefone}</td>
                       <td>{c.divida?.valor ? fmtMoeda(c.divida.valor) : "—"}</td>
                       <td>{c.divida?.vencimento || "—"}</td>
+                      {nVars > 0 && <td>{(c.variaveis || []).join(" · ") || "—"}</td>}
                       <td><button className="btn btn-sm btn-ghost" onClick={() => removerContato(i)}><I.x style={{ width: 12, height: 12 }} /></button></td>
                     </tr>
                   ))}
@@ -932,22 +1030,30 @@ function DisparoScreen() {
               </table>
             </div>
           )}
+        </div>
+      </div>
 
+      <div className="cob-card">
+        <div className="cob-card-body">
           {erro && <div className="err">{erro}</div>}
-          <button className="btn btn-primary" disabled={enviando} style={{ marginTop: 14 }} onClick={disparar}>{enviando ? "Disparando..." : `Disparar pra ${contatos.length} contato(s)`}</button>
+          <button className="btn btn-primary" disabled={enviando || !contatos.length} onClick={disparar} style={{ width: "100%", fontSize: 15, padding: "13px" }}>
+            {enviando ? "Disparando..." : `Disparar pra ${contatos.length} contato(s)`}
+          </button>
         </div>
       </div>
 
       <div className="cob-card">
         <div className="cob-card-h"><h3>Campanhas</h3></div>
         {campanhas.map((c) => (
-          <div className="cob-row" key={c.id}>
+          <div className="cob-row" key={c.id} style={{ cursor: "pointer" }} onClick={() => setCampanhaAberta(c.id)}>
             <div className="info"><div className="nm">{c.nome}</div><div className="sub">{c.enviados}/{c.total} enviados · {c.responderam} responderam · {c.falhas} falhas · {c.status}</div></div>
-            {c.pendentesCount > 0 && <button className="btn btn-sm" onClick={() => api.retomarCampanha(c.id).then(carregar)}>Retomar</button>}
+            {c.pendentesCount > 0 && <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); api.retomarCampanha(c.id).then(carregar); }}>Retomar</button>}
           </div>
         ))}
         {campanhas.length === 0 && <div className="cob-empty">Nenhuma campanha disparada ainda.</div>}
       </div>
+
+      {campanhaAberta && <CampanhaDrawer campanhaId={campanhaAberta} onClose={() => setCampanhaAberta(null)} />}
     </div>
   );
 }
