@@ -854,12 +854,28 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
   app.post("/api/cobranca/chats/:id/ia", auth, gerenteOnly, (req, res) => {
     const chat = db.waChats[req.params.id];
     if (!chat || chat.canal !== "oficial") return res.status(404).json({ error: "Conversa não encontrada" });
-    const pausar = !!(req.body && req.body.pausar);
-    chat.iaPausada = pausar;
+    const b = req.body || {};
     if (!Array.isArray(chat.notas)) chat.notas = [];
+    // atribuir/trocar qual IA cuida dessa conversa (funciona mesmo sem ter vindo de um disparo)
+    if (b.iaId !== undefined) {
+      if (b.iaId === null || b.iaId === "") {
+        chat.iaId = null;
+        chat.notas.push({ tipo: "ia_removida", texto: `${req.user.nome} removeu a IA dessa conversa`, ts: Date.now(), por: req.user.nome });
+      } else {
+        const ia = (db.cobranca.ias || []).find((x) => x.id === b.iaId);
+        if (!ia) return res.status(400).json({ error: "IA não encontrada" });
+        chat.iaId = ia.id;
+        chat.iaPausada = false;
+        chat.notas.push({ tipo: "ia_atribuida", texto: `${req.user.nome} atribuiu a IA "${ia.nome}" a essa conversa`, ts: Date.now(), por: req.user.nome });
+        salvar();
+        return res.json({ ok: true, iaId: chat.iaId, iaPausada: chat.iaPausada });
+      }
+    }
+    const pausar = !!b.pausar;
+    chat.iaPausada = pausar;
     chat.notas.push({ tipo: pausar ? "ia_pausada" : "ia_retomada", texto: `${req.user.nome} ${pausar ? "pausou a IA e assumiu" : "devolveu o atendimento pra IA"}`, ts: Date.now(), por: req.user.nome });
     salvar();
-    res.json({ ok: true, iaPausada: chat.iaPausada });
+    res.json({ ok: true, iaId: chat.iaId, iaPausada: chat.iaPausada });
   });
 
   /* PREVIEW: testa a IA (SDR ou Negociadora) sem WhatsApp de verdade */
@@ -991,10 +1007,23 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     res.json({ ...c, pendentes: undefined, pendentesCount: c.pendentes ? c.pendentes.length : 0, numeroApelido: numeroCfg ? numeroCfg.apelido : "" });
   });
   app.delete("/api/cobranca/campanhas/:id", auth, gerenteOnly, (req, res) => {
+    const campanhaId = req.params.id;
     const antes = (db.cobranca.campanhas || []).length;
-    db.cobranca.campanhas = (db.cobranca.campanhas || []).filter((x) => x.id !== req.params.id);
+    db.cobranca.campanhas = (db.cobranca.campanhas || []).filter((x) => x.id !== campanhaId);
+    // remove junto as conversas que nasceram dessa campanha — senão fica "órfã", com iaId/estado
+    // apontando pra uma campanha que não existe mais, e confunde teste/uso depois
+    let conversasRemovidas = 0;
+    for (const chatId of Object.keys(db.waChats)) {
+      const c = db.waChats[chatId];
+      if (c && c.campanhaId === campanhaId) { delete db.waChats[chatId]; conversasRemovidas++; }
+    }
+    if (db.cobranca.msgCampanha) {
+      for (const mid of Object.keys(db.cobranca.msgCampanha)) {
+        if (db.cobranca.msgCampanha[mid] === campanhaId) delete db.cobranca.msgCampanha[mid];
+      }
+    }
     salvar();
-    res.json({ ok: true, removida: antes !== db.cobranca.campanhas.length });
+    res.json({ ok: true, removida: antes !== db.cobranca.campanhas.length, conversasRemovidas });
   });
 
   /* ============================================================

@@ -53,6 +53,7 @@ export const api = {
   setIaGlobal: (ativa) => req("POST", "/api/cobranca/ia-global", { ativa }),
   previewIA: (dados) => req("POST", "/api/cobranca/ias/preview", dados),
   pausarIAChat: (id, pausar) => req("POST", "/api/cobranca/chats/" + id + "/ia", { pausar }),
+  atribuirIAChat: (id, iaId) => req("POST", "/api/cobranca/chats/" + id + "/ia", { iaId: iaId || null }),
 
   // disparo / campanhas
   disparar: (dados) => req("POST", "/api/cobranca/disparar", dados),

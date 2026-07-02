@@ -243,6 +243,7 @@ function Conversas() {
   const [chat, setChat] = useState(null);
   const [texto, setTexto] = useState("");
   const [busca, setBusca] = useState("");
+  const [ias, setIas] = useState([]);
   const msgsRef = useRef(null);
   const [showFab, irParaBaixo] = useScrollFab(msgsRef, [chat && chat.mensagens && chat.mensagens.length]);
 
@@ -255,6 +256,8 @@ function Conversas() {
     const t = setInterval(carregarLista, 6000);
     return () => clearInterval(t);
   }, [carregarLista]);
+
+  useEffect(() => { api.ias().then((r) => setIas(r.filter((i) => i.ativa))).catch(() => {}); }, []);
 
   useEffect(() => {
     if (!ativoId) return;
@@ -281,6 +284,11 @@ function Conversas() {
   async function mudarEstado(estado) {
     if (!ativoId) return;
     try { await api.setEstadoCobranca(ativoId, estado); setChat(await api.chat(ativoId)); carregarLista(); } catch (e) { alert(e.message); }
+  }
+
+  async function mudarIA(iaId) {
+    if (!ativoId) return;
+    try { await api.atribuirIAChat(ativoId, iaId); setChat(await api.chat(ativoId)); carregarLista(); } catch (e) { alert(e.message); }
   }
 
   return (
@@ -319,7 +327,11 @@ function Conversas() {
                   <div className="nm">{chat.nome}</div>
                   <div className="num">{chat.numero}{chat.divida && chat.divida.vencimento ? ` · venc. ${chat.divida.vencimento}` : ""}</div>
                 </div>
-                <div style={{ marginLeft: "auto" }}>
+                <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                  <select className="select" value={chat.iaId || ""} onChange={(e) => mudarIA(e.target.value)} title="Qual IA cuida dessa conversa">
+                    <option value="">Sem IA (humano)</option>
+                    {ias.map((i) => <option key={i.id} value={i.id}>{i.nome} ({i.papel})</option>)}
+                  </select>
                   <select className="select" value={chat.estadoCobranca || "nao_contatado"} onChange={(e) => mudarEstado(e.target.value)}>
                     {Object.keys(ESTADOS_LABEL).map((k) => <option key={k} value={k}>{ESTADOS_LABEL[k]}</option>)}
                   </select>
@@ -859,7 +871,7 @@ function CampanhaDrawer({ campanhaId, onClose, onDeleted }) {
   }, [campanhaId]);
 
   async function excluir() {
-    if (!confirm("Excluir essa campanha? O histórico dela some.")) return;
+    if (!confirm("Excluir essa campanha? Isso também apaga as conversas que nasceram dela (mensagens somem).")) return;
     await api.excluirCampanha(campanhaId);
     onDeleted();
   }
@@ -1120,7 +1132,7 @@ function DisparoScreen() {
           <div className="cob-row" key={c.id} style={{ cursor: "pointer" }} onClick={() => setCampanhaAberta(c.id)}>
             <div className="info"><div className="nm">{c.nome}</div><div className="sub">{c.enviados}/{c.total} enviados · {c.responderam} responderam · {c.falhas} falhas · {c.status}</div></div>
             {c.pendentesCount > 0 && <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); api.retomarCampanha(c.id).then(carregar); }}>Retomar</button>}
-            <button className="btn btn-sm btn-ghost" style={{ color: "var(--coral)" }} onClick={(e) => { e.stopPropagation(); if (confirm("Excluir essa campanha? O histórico dela some.")) api.excluirCampanha(c.id).then(carregar); }}><I.trash style={{ width: 14, height: 14 }} /></button>
+            <button className="btn btn-sm btn-ghost" style={{ color: "var(--coral)" }} onClick={(e) => { e.stopPropagation(); if (confirm("Excluir essa campanha? Isso também apaga as conversas que nasceram dela (mensagens somem).")) api.excluirCampanha(c.id).then(carregar); }}><I.trash style={{ width: 14, height: 14 }} /></button>
           </div>
         ))}
         {campanhas.length === 0 && <div className="cob-empty">Nenhuma campanha disparada ainda.</div>}
