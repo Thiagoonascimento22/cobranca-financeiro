@@ -374,7 +374,8 @@ function Conversas() {
    ============================================================ */
 function Numeros() {
   const [lista, setLista] = useState([]);
-  const [form, setForm] = useState({ apelido: "", numero: "", phoneNumberId: "", wabaId: "", token: "" });
+  const [ias, setIas] = useState([]);
+  const [form, setForm] = useState({ apelido: "", numero: "", phoneNumberId: "", wabaId: "", token: "", iaDefaultId: "" });
   const [salvando, setSalvando] = useState(false);
   const [webhookInfo, setWebhookInfo] = useState(null);
   const [modalAberto, setModalAberto] = useState(false);
@@ -383,6 +384,7 @@ function Numeros() {
   async function carregar() {
     try { setLista(await api.numeros()); } catch (_) {}
     try { setWebhookInfo(await api.webhookInfo()); } catch (_) {}
+    try { setIas((await api.ias()).filter((i) => i.ativa)); } catch (_) {}
   }
   useEffect(() => {
     carregar();
@@ -396,7 +398,7 @@ function Numeros() {
     setSalvando(true);
     try {
       await api.criarNumero(form);
-      setForm({ apelido: "", numero: "", phoneNumberId: "", wabaId: "", token: "" });
+      setForm({ apelido: "", numero: "", phoneNumberId: "", wabaId: "", token: "", iaDefaultId: "" });
       setModalAberto(false);
       carregar();
     } catch (e) { setErro(e.message); } finally { setSalvando(false); }
@@ -405,6 +407,9 @@ function Numeros() {
     if (!confirm("Remover esse número?")) return;
     await api.excluirNumero(id);
     carregar();
+  }
+  async function mudarIaDefault(id, iaDefaultId) {
+    try { await api.editarNumero(id, { iaDefaultId: iaDefaultId || null }); carregar(); } catch (e) { alert(e.message); }
   }
 
   const urlWebhook = typeof window !== "undefined" ? window.location.origin + "/api/cobranca/webhook" : "";
@@ -416,7 +421,7 @@ function Numeros() {
         <button className="btn btn-primary" onClick={() => setModalAberto(true)}><I.plus style={{ width: 15, height: 15 }} /> Conectar número</button>
       </div>
 
-      <div className="dash-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+      <div className="dash-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
         {lista.map((n) => (
           <div className="cob-card" key={n.id} style={{ marginBottom: 0, padding: 18 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -431,7 +436,14 @@ function Numeros() {
               </div>
               <span className={"cob-pill " + (n.ativo ? "on" : "off")}>{n.ativo ? "ativo" : "inativo"}</span>
             </div>
-            <button className="btn btn-sm btn-ghost" style={{ width: "100%", marginTop: 14, color: "var(--coral)" }} onClick={() => excluir(n.id)}>Remover</button>
+            <div className="field" style={{ marginTop: 14, marginBottom: 8 }}>
+              <label style={{ fontSize: 12 }}>IA padrão (responde quem chegar sem disparo)</label>
+              <select className="select" value={n.iaDefaultId || ""} onChange={(e) => mudarIaDefault(n.id, e.target.value)}>
+                <option value="">Nenhuma — vai direto pro atendente humano</option>
+                {ias.map((i) => <option key={i.id} value={i.id}>{i.nome} ({i.papel})</option>)}
+              </select>
+            </div>
+            <button className="btn btn-sm btn-ghost" style={{ width: "100%", color: "var(--coral)" }} onClick={() => excluir(n.id)}>Remover</button>
           </div>
         ))}
       </div>
@@ -458,6 +470,12 @@ function Numeros() {
             <div className="field"><label>Phone Number ID (Meta)</label><input className="input" value={form.phoneNumberId} onChange={(e) => setForm({ ...form, phoneNumberId: e.target.value })} /></div>
             <div className="field"><label>WABA ID</label><input className="input" value={form.wabaId} onChange={(e) => setForm({ ...form, wabaId: e.target.value })} /></div>
             <div className="field"><label>Token de acesso permanente</label><input className="input" type="password" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value })} /></div>
+            <div className="field"><label>IA padrão (opcional)</label>
+              <select className="select" value={form.iaDefaultId} onChange={(e) => setForm({ ...form, iaDefaultId: e.target.value })}>
+                <option value="">Nenhuma — vai direto pro atendente humano</option>
+                {ias.map((i) => <option key={i.id} value={i.id}>{i.nome} ({i.papel})</option>)}
+              </select>
+            </div>
             {erro && <div className="err">{erro}</div>}
             <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
               <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setModalAberto(false)}>Cancelar</button>
@@ -1048,7 +1066,7 @@ function DisparoScreen() {
         <div className="cob-card-body">
           <div className="row2">
             <div className="field"><label>Número</label>
-              <select className="select" value={numeroId} onChange={(e) => { setNumeroId(e.target.value); setTemplate(""); }}>
+              <select className="select" value={numeroId} onChange={(e) => { setNumeroId(e.target.value); setTemplate(""); const n = numeros.find((x) => x.id === e.target.value); if (n && n.iaDefaultId && !iaId) setIaId(n.iaDefaultId); }}>
                 <option value="">Selecione</option>
                 {numeros.map((n) => <option key={n.id} value={n.id}>{n.apelido}</option>)}
               </select>

@@ -82,7 +82,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     return (db.cobranca.numeros || []).find((n) => n.id === id) || null;
   }
   function numeroPublico(n) {
-    return { id: n.id, apelido: n.apelido, numero: n.numero, phoneNumberId: n.phoneNumberId, wabaId: n.wabaId, ativo: n.ativo, temToken: !!n.token, fotoPerfilUrl: n.fotoPerfilUrl || null };
+    return { id: n.id, apelido: n.apelido, numero: n.numero, phoneNumberId: n.phoneNumberId, wabaId: n.wabaId, ativo: n.ativo, temToken: !!n.token, fotoPerfilUrl: n.fotoPerfilUrl || null, iaDefaultId: n.iaDefaultId || null };
   }
   // busca (e guarda em cache) a foto do perfil comercial do WhatsApp desse número
   async function atualizarFotoPerfil(n) {
@@ -174,11 +174,15 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     const id = chaveChat(numeroId, telefone);
     let chat = db.waChats[id];
     if (!chat) {
+      const numeroCfg = acharNumero(numeroId);
       chat = {
         id, canal: "oficial", numeroOficialId: numeroId, instance: id,
         numero: telefone, nome: nome || telefone,
         mensagens: [], naoLidas: 0, atualizadoEm: Date.now(),
         atendenteId: null, estadoCobranca: "nao_contatado",
+        // toda conversa nova nesse número já nasce com a IA padrão dele, se houver —
+        // assim quem manda mensagem por conta própria (sem ter recebido disparo) também é atendido
+        iaId: (numeroCfg && numeroCfg.iaDefaultId) || null,
       };
       db.waChats[id] = chat;
     }
@@ -314,7 +318,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       id: proximoId("num"), apelido,
       numero: String(b.numero || "").trim(),
       phoneNumberId, wabaId: String(b.wabaId || "").trim(), token,
-      ativo: true,
+      ativo: true, iaDefaultId: b.iaDefaultId || null,
     };
     db.cobranca.numeros.push(novo);
     await assinarWebhook(novo);
@@ -333,6 +337,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (b.wabaId !== undefined) n.wabaId = String(b.wabaId).trim();
     if (b.token) n.token = String(b.token).trim();
     if (b.ativo !== undefined) n.ativo = !!b.ativo;
+    if (b.iaDefaultId !== undefined) n.iaDefaultId = b.iaDefaultId || null;
     await assinarWebhook(n);
     salvar();
     res.json(numeroPublico(n));
@@ -919,7 +924,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     const contatos = Array.isArray(b.contatos) ? b.contatos : [];
     if (!contatos.length) return res.status(400).json({ error: "Nenhum contato na lista" });
     if (contatos.length > 5000) return res.status(400).json({ error: "Máximo de 5000 por disparo" });
-    const iaId = String(b.iaId || "").trim();
+    const iaId = String(b.iaId || numeroCfg.iaDefaultId || "").trim();
     const iaCampanha = iaId ? (db.cobranca.ias || []).find((x) => x.id === iaId && x.ativa) : null;
     if (iaId && !iaCampanha) return res.status(400).json({ error: "IA selecionada não existe ou está pausada" });
 
