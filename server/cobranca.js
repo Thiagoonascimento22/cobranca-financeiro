@@ -170,7 +170,27 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
      CHAT (reaproveita db.waChats, canal "oficial")
      ============================================================ */
   function chaveChat(numeroId, telefone) { return `oficial::${numeroId}::${telefone}`; }
+  // núcleo do número: só os últimos 8 dígitos, pra comparar ignorando o 9º dígito
+  // que o Brasil tem/não tem dependendo de como a Meta manda o "from" da resposta
+  function nucleoTelefone(t) { return String(t || "").replace(/\D/g, "").slice(-8); }
+  function acharChatTolerante(numeroId, telefone) {
+    const exato = db.waChats[chaveChat(numeroId, telefone)];
+    if (exato) return exato;
+    const alvo = nucleoTelefone(telefone);
+    if (!alvo) return null;
+    for (const c of Object.values(db.waChats)) {
+      if (!c || c.canal !== "oficial" || c.numeroOficialId !== numeroId) continue;
+      if (nucleoTelefone(c.numero) === alvo) return c;
+    }
+    return null;
+  }
   function acharOuCriarChat(numeroId, telefone, nome) {
+    const existente = acharChatTolerante(numeroId, telefone);
+    if (existente) {
+      // atualiza pro formato mais recente que a Meta mandou, sem perder o histórico
+      if (nome && (!existente.nome || existente.nome === existente.numero)) existente.nome = nome;
+      return existente;
+    }
     const id = chaveChat(numeroId, telefone);
     let chat = db.waChats[id];
     if (!chat) {
