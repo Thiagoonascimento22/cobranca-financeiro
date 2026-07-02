@@ -1182,6 +1182,69 @@ function DisparoScreen() {
 /* ============================================================
    ACORDOS — automação pós-acordo (parcelas, lembretes, quebra)
    ============================================================ */
+function ConfigLembretes() {
+  const [cfg, setCfg] = useState(null);
+  const [numeros, setNumeros] = useState([]);
+  const [numeroId, setNumeroId] = useState("");
+  const [templates, setTemplates] = useState([]);
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    api.config().then(setCfg).catch(() => {});
+    api.numeros().then(setNumeros).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!numeroId) { setTemplates([]); return; }
+    api.templates(numeroId).then((r) => setTemplates(r.templates || [])).catch(() => setTemplates([]));
+  }, [numeroId]);
+
+  async function salvar() {
+    setSalvando(true); setMsg("");
+    try { const r = await api.setConfig(cfg); setCfg(r); setMsg("Salvo."); } catch (e) { setMsg("Erro: " + e.message); } finally { setSalvando(false); }
+  }
+
+  if (!cfg) return null;
+  return (
+    <div className="cob-card">
+      <div className="cob-card-h"><h3>Lembretes automáticos <span className="soon-badge">configura aqui</span></h3></div>
+      <div className="cob-card-body">
+        <p className="agx-psub">
+          A cada hora, o sistema confere as parcelas de todo acordo. Manda o template de lembrete alguns dias antes do
+          vencimento, e se a parcela vencer sem pagamento (+ carência), marca o acordo como quebrado e reabre pro atendente,
+          usando o template de quebra (se configurado).
+        </p>
+        <div className="field"><label>Número (só pra listar os templates aprovados dele)</label>
+          <select className="select" value={numeroId} onChange={(e) => setNumeroId(e.target.value)}>
+            <option value="">Selecione</option>
+            {numeros.map((n) => <option key={n.id} value={n.id}>{n.apelido}</option>)}
+          </select>
+        </div>
+        <div className="row2">
+          <div className="field"><label>Template de lembrete</label>
+            <select className="select" value={cfg.templateLembrete} onChange={(e) => setCfg({ ...cfg, templateLembrete: e.target.value })}>
+              <option value="">Nenhum (não manda lembrete)</option>
+              {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+            </select>
+          </div>
+          <div className="field"><label>Template de aviso de quebra</label>
+            <select className="select" value={cfg.templateQuebra} onChange={(e) => setCfg({ ...cfg, templateQuebra: e.target.value })}>
+              <option value="">Nenhum (não avisa)</option>
+              {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="row2">
+          <div className="field"><label>Dias antes do vencimento pra lembrar</label><input className="input" type="number" min="0" max="10" value={cfg.diasAntesLembrete} onChange={(e) => setCfg({ ...cfg, diasAntesLembrete: Number(e.target.value) })} /></div>
+          <div className="field"><label>Dias de carência antes de considerar quebrado</label><input className="input" type="number" min="0" max="15" value={cfg.diasCarencia} onChange={(e) => setCfg({ ...cfg, diasCarencia: Number(e.target.value) })} /></div>
+        </div>
+        {msg && <p className="agx-psub" style={{ color: msg.startsWith("Erro") ? "var(--coral)" : "var(--mint)" }}>{msg}</p>}
+        <button className="btn btn-primary" onClick={salvar} disabled={salvando}>{salvando ? "Salvando..." : "Salvar"}</button>
+      </div>
+    </div>
+  );
+}
+
 function AcordosScreen() {
   const [lista, setLista] = useState([]);
   async function carregar() { try { setLista(await api.acordos()); } catch (_) {} }
@@ -1194,6 +1257,7 @@ function AcordosScreen() {
       <div className="page-head">
         <div><h2>Acordos</h2><p>Parcelas, lembretes e quebra de acordo automáticos.</p></div>
       </div>
+      <ConfigLembretes />
       <div className="cob-card">
         <div className="cob-card-h"><h3>Acordos fechados</h3></div>
         {lista.map((a) => (
