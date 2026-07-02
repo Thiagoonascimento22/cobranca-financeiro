@@ -82,6 +82,26 @@ function ScrollFab({ show, onClick }) {
   );
 }
 
+/* modal genérico e leve, reutilizado em Números/Equipe pra ações de criar */
+function Modal({ titulo, subtitulo, onClose, children, largura }) {
+  return (
+    <div className="agx-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ width: largura || 480, maxWidth: "92vw" }} onClick={(e) => e.stopPropagation()}>
+        <div className="mh">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <h3 style={{ margin: 0 }}>{titulo}</h3>
+              {subtitulo && <p style={{ margin: "4px 0 0" }}>{subtitulo}</p>}
+            </div>
+            <button className="agx-x" onClick={onClose}><I.x style={{ width: 16, height: 16 }} /></button>
+          </div>
+        </div>
+        <div className="mb">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
    LOGIN
    ============================================================ */
@@ -158,6 +178,9 @@ function PainelScreen() {
 
   return (
     <div className="content">
+      <div className="page-head">
+        <div><h2>Painel</h2><p>Visão geral da cobrança em tempo real.</p></div>
+      </div>
       <div className="dash-grid">
         <div className="dash-card warn">
           <div className="ic-wrap"><I.cash /></div>
@@ -331,21 +354,29 @@ function Numeros() {
   const [form, setForm] = useState({ apelido: "", numero: "", phoneNumberId: "", wabaId: "", token: "" });
   const [salvando, setSalvando] = useState(false);
   const [webhookInfo, setWebhookInfo] = useState(null);
+  const [modalAberto, setModalAberto] = useState(false);
+  const [erro, setErro] = useState("");
 
   async function carregar() {
     try { setLista(await api.numeros()); } catch (_) {}
     try { setWebhookInfo(await api.webhookInfo()); } catch (_) {}
   }
-  useEffect(() => { carregar(); }, []);
+  useEffect(() => {
+    carregar();
+    const t = setInterval(carregar, 8000); // pega a foto de perfil assim que o backend termina de buscar
+    return () => clearInterval(t);
+  }, []);
 
   async function criar(e) {
     e.preventDefault();
+    setErro("");
     setSalvando(true);
     try {
       await api.criarNumero(form);
       setForm({ apelido: "", numero: "", phoneNumberId: "", wabaId: "", token: "" });
+      setModalAberto(false);
       carregar();
-    } catch (e) { alert(e.message); } finally { setSalvando(false); }
+    } catch (e) { setErro(e.message); } finally { setSalvando(false); }
   }
   async function excluir(id) {
     if (!confirm("Remover esse número?")) return;
@@ -357,42 +388,61 @@ function Numeros() {
 
   return (
     <div className="content">
-      <div className="cob-card">
+      <div className="page-head">
+        <div><h2>Números</h2><p>Números do WhatsApp conectados ao sistema de cobrança.</p></div>
+        <button className="btn btn-primary" onClick={() => setModalAberto(true)}><I.plus style={{ width: 15, height: 15 }} /> Conectar número</button>
+      </div>
+
+      <div className="dash-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+        {lista.map((n) => (
+          <div className="cob-card" key={n.id} style={{ marginBottom: 0, padding: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {n.fotoPerfilUrl ? (
+                <img src={n.fotoPerfilUrl} alt={n.apelido} style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+              ) : (
+                <div className="avatar" style={{ width: 48, height: 48, fontSize: 18 }}>{(n.apelido || "?").slice(0, 1).toUpperCase()}</div>
+              )}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontWeight: 700, color: "var(--text)", fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.apelido}</div>
+                <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{n.numero || n.phoneNumberId}</div>
+              </div>
+              <span className={"cob-pill " + (n.ativo ? "on" : "off")}>{n.ativo ? "ativo" : "inativo"}</span>
+            </div>
+            <button className="btn btn-sm btn-ghost" style={{ width: "100%", marginTop: 14, color: "var(--coral)" }} onClick={() => excluir(n.id)}>Remover</button>
+          </div>
+        ))}
+      </div>
+      {lista.length === 0 && (
+        <div className="cob-card"><div className="cob-empty">Nenhum número cadastrado ainda — clica em "Conectar número" ali em cima.</div></div>
+      )}
+
+      <div className="cob-card" style={{ marginTop: 8 }}>
         <div className="cob-card-h"><h3>Webhook (configurar na Meta)</h3></div>
         <div className="cob-card-body">
-          <div className="field"><label>URL do webhook</label><input className="input" readOnly value={urlWebhook} onClick={(e) => e.target.select()} /></div>
-          <div className="field"><label>Verify Token</label><input className="input" readOnly value={webhookInfo ? webhookInfo.verifyToken : "..."} onClick={(e) => e.target.select()} /></div>
+          <div className="row2">
+            <div className="field"><label>URL do webhook</label><input className="input" readOnly value={urlWebhook} onClick={(e) => e.target.select()} /></div>
+            <div className="field"><label>Verify Token</label><input className="input" readOnly value={webhookInfo ? webhookInfo.verifyToken : "..."} onClick={(e) => e.target.select()} /></div>
+          </div>
           <p className="agx-psub" style={{ marginBottom: 0 }}>Cole esses dois valores em Meta for Developers → seu app → WhatsApp → Configuration → Webhook.</p>
         </div>
       </div>
 
-      <div className="cob-card">
-        <div className="cob-card-h"><h3>Números conectados</h3></div>
-        {lista.map((n) => (
-          <div className="cob-row" key={n.id}>
-            <div className="info"><div className="nm">{n.apelido}</div><div className="sub">{n.numero || n.phoneNumberId}</div></div>
-            <span className={"cob-pill " + (n.ativo ? "on" : "off")}>{n.ativo ? "ativo" : "inativo"}</span>
-            <button className="btn btn-sm btn-danger" onClick={() => excluir(n.id)}><I.trash style={{ width: 14, height: 14 }} /></button>
-          </div>
-        ))}
-        {lista.length === 0 && <div className="cob-empty">Nenhum número cadastrado ainda.</div>}
-      </div>
-
-      <div className="cob-card">
-        <div className="cob-card-h"><h3>Conectar novo número</h3></div>
-        <div className="cob-card-body">
+      {modalAberto && (
+        <Modal titulo="Conectar número" subtitulo="Cole os dados desse número, vindos do Meta for Developers." onClose={() => setModalAberto(false)}>
           <form onSubmit={criar}>
-            <div className="row2">
-              <div className="field"><label>Apelido</label><input className="input" value={form.apelido} onChange={(e) => setForm({ ...form, apelido: e.target.value })} placeholder="Ex: Financeiro Cobrança" /></div>
-              <div className="field"><label>Número (visual)</label><input className="input" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} placeholder="Ex: 44 9 9999-0000" /></div>
-            </div>
+            <div className="field"><label>Apelido</label><input className="input" value={form.apelido} onChange={(e) => setForm({ ...form, apelido: e.target.value })} placeholder="Ex: Financeiro Cobrança" autoFocus /></div>
+            <div className="field"><label>Número (visual)</label><input className="input" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} placeholder="Ex: 44 9 9999-0000" /></div>
             <div className="field"><label>Phone Number ID (Meta)</label><input className="input" value={form.phoneNumberId} onChange={(e) => setForm({ ...form, phoneNumberId: e.target.value })} /></div>
             <div className="field"><label>WABA ID</label><input className="input" value={form.wabaId} onChange={(e) => setForm({ ...form, wabaId: e.target.value })} /></div>
             <div className="field"><label>Token de acesso permanente</label><input className="input" type="password" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value })} /></div>
-            <button className="btn btn-primary" disabled={salvando}>{salvando ? "Conectando..." : "Conectar número"}</button>
+            {erro && <div className="err">{erro}</div>}
+            <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+              <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setModalAberto(false)}>Cancelar</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} disabled={salvando}>{salvando ? "Conectando..." : "Conectar"}</button>
+            </div>
           </form>
-        </div>
-      </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -403,50 +453,64 @@ function Numeros() {
 function Equipe() {
   const [lista, setLista] = useState([]);
   const [form, setForm] = useState({ nome: "", login: "", senha: "", role: "atendente" });
+  const [modalAberto, setModalAberto] = useState(false);
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
   async function carregar() { try { setLista(await api.listUsers()); } catch (_) {} }
   useEffect(() => { carregar(); }, []);
 
   async function criar(e) {
     e.preventDefault();
-    try { await api.createUser(form); setForm({ nome: "", login: "", senha: "", role: "atendente" }); carregar(); }
-    catch (e) { alert(e.message); }
+    setErro(""); setSalvando(true);
+    try {
+      await api.createUser(form);
+      setForm({ nome: "", login: "", senha: "", role: "atendente" });
+      setModalAberto(false);
+      carregar();
+    } catch (e) { setErro(e.message); } finally { setSalvando(false); }
   }
   async function excluir(id) { if (!confirm("Remover esse usuário?")) return; await api.deleteUser(id); carregar(); }
 
   return (
     <div className="content">
+      <div className="page-head">
+        <div><h2>Equipe</h2><p>Quem tem acesso ao sistema de cobrança.</p></div>
+        <button className="btn btn-primary" onClick={() => setModalAberto(true)}><I.plus style={{ width: 15, height: 15 }} /> Adicionar pessoa</button>
+      </div>
+
       <div className="cob-card">
-        <div className="cob-card-h"><h3>Equipe do financeiro</h3></div>
         {lista.map((u) => (
           <div className="cob-row" key={u.id}>
+            <div className="avatar" style={{ width: 36, height: 36, fontSize: 14, marginRight: 12 }}>{(u.nome || "?").slice(0, 1).toUpperCase()}</div>
             <div className="info"><div className="nm">{u.nome}</div><div className="sub">@{u.login}</div></div>
             <span className={"cob-pill " + (u.role === "gerente" ? "on" : "off")}>{u.role}</span>
-            <button className="btn btn-sm btn-danger" onClick={() => excluir(u.id)}><I.trash style={{ width: 14, height: 14 }} /></button>
+            <button className="btn btn-sm btn-ghost" style={{ color: "var(--coral)" }} onClick={() => excluir(u.id)}><I.trash style={{ width: 14, height: 14 }} /></button>
           </div>
         ))}
+        {lista.length === 0 && <div className="cob-empty">Ninguém cadastrado ainda além de você.</div>}
       </div>
-      <div className="cob-card">
-        <div className="cob-card-h"><h3>Adicionar pessoa</h3></div>
-        <div className="cob-card-body">
+
+      {modalAberto && (
+        <Modal titulo="Adicionar pessoa" onClose={() => setModalAberto(false)}>
           <form onSubmit={criar}>
-            <div className="row2">
-              <div className="field"><label>Nome</label><input className="input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
-              <div className="field"><label>Login</label><input className="input" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} /></div>
+            <div className="field"><label>Nome</label><input className="input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} autoFocus /></div>
+            <div className="field"><label>Login</label><input className="input" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} /></div>
+            <div className="field"><label>Senha</label><input className="input" type="password" value={form.senha} onChange={(e) => setForm({ ...form, senha: e.target.value })} /></div>
+            <div className="field"><label>Papel</label>
+              <select className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                <option value="atendente">Atendente</option>
+                <option value="gerente">Gerente</option>
+              </select>
             </div>
-            <div className="row2">
-              <div className="field"><label>Senha</label><input className="input" type="password" value={form.senha} onChange={(e) => setForm({ ...form, senha: e.target.value })} /></div>
-              <div className="field"><label>Papel</label>
-                <select className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                  <option value="atendente">Atendente</option>
-                  <option value="gerente">Gerente</option>
-                </select>
-              </div>
+            {erro && <div className="err">{erro}</div>}
+            <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+              <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setModalAberto(false)}>Cancelar</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} disabled={salvando}>{salvando ? "Adicionando..." : "Adicionar"}</button>
             </div>
-            <button className="btn btn-primary">Adicionar</button>
           </form>
-        </div>
-      </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -726,6 +790,9 @@ function IAsScreen() {
 
   return (
     <div className="content">
+      <div className="page-head">
+        <div><h2>IAs</h2><p>SDR qualifica, Negociadora propõe pagamento.</p></div>
+      </div>
       <div className="cob-card">
         <div className="cob-card-h">
           <h3>Botão de pânico</h3>
@@ -778,7 +845,7 @@ function IAsScreen() {
 /* ============================================================
    DISPARO EM MASSA — CSV ou adição manual
    ============================================================ */
-function CampanhaDrawer({ campanhaId, onClose }) {
+function CampanhaDrawer({ campanhaId, onClose, onDeleted }) {
   const [c, setC] = useState(null);
   const [erro, setErro] = useState("");
   useEffect(() => {
@@ -789,6 +856,12 @@ function CampanhaDrawer({ campanhaId, onClose }) {
     return () => { cancelado = true; clearInterval(t); };
   }, [campanhaId]);
 
+  async function excluir() {
+    if (!confirm("Excluir essa campanha? O histórico dela some.")) return;
+    await api.excluirCampanha(campanhaId);
+    onDeleted();
+  }
+
   const STATUS_LABEL = { enviado: "Enviado", entregue: "Entregue", lido: "Lido", falhou_entrega: "Falhou na entrega", falha: "Falha ao enviar" };
   const STATUS_COR = { enviado: "em_conversa", entregue: "negociando", lido: "pago", falhou_entrega: "perdido", falha: "perdido" };
 
@@ -798,7 +871,10 @@ function CampanhaDrawer({ campanhaId, onClose }) {
       <div className="drawer">
         <div className="drawer-h">
           <h3>{c ? c.nome : "Carregando..."}</h3>
-          <button className="x-btn" onClick={onClose}><I.x /></button>
+          <div style={{ display: "flex", gap: 6 }}>
+            {c && <button className="btn btn-sm btn-ghost" style={{ color: "var(--coral)" }} onClick={excluir}><I.trash style={{ width: 14, height: 14 }} /></button>}
+            <button className="x-btn" onClick={onClose}><I.x /></button>
+          </div>
         </div>
         <div className="drawer-body">
           {erro && <div className="err">{erro}</div>}
@@ -935,8 +1011,11 @@ function DisparoScreen() {
 
   return (
     <div className="content">
+      <div className="page-head">
+        <div><h2>Disparo em massa</h2><p>Monta a campanha e manda pra base de inadimplentes.</p></div>
+      </div>
+
       <div className="cob-card">
-        <div className="cob-card-h"><h3>1. Número e template</h3></div>
         <div className="cob-card-body">
           <div className="row2">
             <div className="field"><label>Número</label>
@@ -953,18 +1032,15 @@ function DisparoScreen() {
             </div>
           </div>
           {templateInfo && (
-            <div style={{ background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 10, padding: 12, fontSize: 13, color: "var(--muted)" }}>
-              <strong style={{ color: "var(--text)" }}>Prévia do template:</strong> {templateInfo.texto}
-              {nVars > 0 && <div style={{ marginTop: 4 }}>Esse template tem {nVars} variável(is) — no CSV, use colunas <code>variavel1</code>, <code>variavel2</code>... (se não existirem, {"{{1}}"} usa o nome automaticamente).</div>}
+            <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
+              <strong style={{ color: "var(--text)" }}>Prévia:</strong> {templateInfo.texto}
+              {nVars > 0 && <div style={{ marginTop: 4 }}>{nVars} variável(is) — no CSV use colunas <code>variavel1</code>, <code>variavel2</code>... (senão, {"{{1}}"} usa o nome automaticamente).</div>}
             </div>
           )}
-          {templates.length === 0 && numeroId && <p className="agx-psub" style={{ marginTop: 8 }}>Nenhum template aprovado encontrado pra esse número ainda. Cria um em Meta for Developers → WhatsApp → Message Templates.</p>}
-        </div>
-      </div>
+          {templates.length === 0 && numeroId && <p className="agx-psub" style={{ marginTop: 8, marginBottom: 0 }}>Nenhum template aprovado ainda pra esse número. Cria um em Meta for Developers → WhatsApp → Message Templates.</p>}
 
-      <div className="cob-card">
-        <div className="cob-card-h"><h3>2. IA e nome da campanha</h3></div>
-        <div className="cob-card-body">
+          <div className="agx-sep" />
+
           <div className="row2">
             <div className="field"><label>IA que assume quando o aluno responder</label>
               <select className="select" value={iaId} onChange={(e) => setIaId(e.target.value)}>
@@ -974,12 +1050,10 @@ function DisparoScreen() {
             </div>
             <div className="field"><label>Nome da campanha</label><input className="input" value={nomeCampanha} onChange={(e) => setNomeCampanha(e.target.value)} placeholder="Ex: Cobrança julho/2026" /></div>
           </div>
-        </div>
-      </div>
 
-      <div className="cob-card">
-        <div className="cob-card-h"><h3>3. Quem vai receber</h3></div>
-        <div className="cob-card-body">
+          <div className="agx-sep" />
+
+          <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 10 }}>Quem vai receber</label>
           <div className="tabs">
             <button className={modo === "csv" ? "on" : ""} onClick={() => setModo("csv")}>Importar CSV</button>
             <button className={modo === "manual" ? "on" : ""} onClick={() => setModo("manual")}>Adicionar manualmente</button>
@@ -1030,13 +1104,9 @@ function DisparoScreen() {
               </table>
             </div>
           )}
-        </div>
-      </div>
 
-      <div className="cob-card">
-        <div className="cob-card-body">
           {erro && <div className="err">{erro}</div>}
-          <button className="btn btn-primary" disabled={enviando || !contatos.length} onClick={disparar} style={{ width: "100%", fontSize: 15, padding: "13px" }}>
+          <button className="btn btn-primary" disabled={enviando || !contatos.length} onClick={disparar} style={{ width: "100%", fontSize: 15, padding: "13px", marginTop: 16 }}>
             {enviando ? "Disparando..." : `Disparar pra ${contatos.length} contato(s)`}
           </button>
         </div>
@@ -1048,12 +1118,13 @@ function DisparoScreen() {
           <div className="cob-row" key={c.id} style={{ cursor: "pointer" }} onClick={() => setCampanhaAberta(c.id)}>
             <div className="info"><div className="nm">{c.nome}</div><div className="sub">{c.enviados}/{c.total} enviados · {c.responderam} responderam · {c.falhas} falhas · {c.status}</div></div>
             {c.pendentesCount > 0 && <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); api.retomarCampanha(c.id).then(carregar); }}>Retomar</button>}
+            <button className="btn btn-sm btn-ghost" style={{ color: "var(--coral)" }} onClick={(e) => { e.stopPropagation(); if (confirm("Excluir essa campanha? O histórico dela some.")) api.excluirCampanha(c.id).then(carregar); }}><I.trash style={{ width: 14, height: 14 }} /></button>
           </div>
         ))}
         {campanhas.length === 0 && <div className="cob-empty">Nenhuma campanha disparada ainda.</div>}
       </div>
 
-      {campanhaAberta && <CampanhaDrawer campanhaId={campanhaAberta} onClose={() => setCampanhaAberta(null)} />}
+      {campanhaAberta && <CampanhaDrawer campanhaId={campanhaAberta} onClose={() => setCampanhaAberta(null)} onDeleted={() => { setCampanhaAberta(null); carregar(); }} />}
     </div>
   );
 }
@@ -1070,6 +1141,9 @@ function AcordosScreen() {
 
   return (
     <div className="content">
+      <div className="page-head">
+        <div><h2>Acordos</h2><p>Parcelas, lembretes e quebra de acordo automáticos.</p></div>
+      </div>
       <div className="cob-card">
         <div className="cob-card-h"><h3>Acordos fechados</h3></div>
         {lista.map((a) => (
@@ -1124,6 +1198,9 @@ function LigacoesScreen() {
 
   return (
     <div className="content">
+      <div className="page-head">
+        <div><h2>Ligações</h2><p>Twilio + ElevenLabs, pra quando o WhatsApp não é suficiente.</p></div>
+      </div>
       <div className="cob-card">
         <div className="cob-card-h"><h3>Ligações com IA de voz <span className="soon-badge">em construção</span></h3></div>
         <div className="cob-card-body">

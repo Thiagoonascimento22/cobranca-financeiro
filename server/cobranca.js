@@ -82,7 +82,19 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     return (db.cobranca.numeros || []).find((n) => n.id === id) || null;
   }
   function numeroPublico(n) {
-    return { id: n.id, apelido: n.apelido, numero: n.numero, phoneNumberId: n.phoneNumberId, wabaId: n.wabaId, ativo: n.ativo, temToken: !!n.token };
+    return { id: n.id, apelido: n.apelido, numero: n.numero, phoneNumberId: n.phoneNumberId, wabaId: n.wabaId, ativo: n.ativo, temToken: !!n.token, fotoPerfilUrl: n.fotoPerfilUrl || null };
+  }
+  // busca (e guarda em cache) a foto do perfil comercial do WhatsApp desse número
+  async function atualizarFotoPerfil(n) {
+    if (!n || !n.phoneNumberId || !n.token) return;
+    try {
+      const r = await fetch(`${GRAPH}/${n.phoneNumberId}/whatsapp_business_profile?fields=profile_picture_url`, {
+        headers: { Authorization: "Bearer " + n.token },
+      });
+      const data = await r.json().catch(() => ({}));
+      const url = data && data.data && data.data[0] && data.data[0].profile_picture_url;
+      if (url) { n.fotoPerfilUrl = url; salvar(); }
+    } catch (_) { /* silencioso — foto é só cosmético, não pode travar nada */ }
   }
 
   function soDigitos(s) { return String(s || "").replace(/\D/g, ""); }
@@ -276,6 +288,8 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
   app.get("/api/cobranca/numeros", auth, gerenteOnly, (req, res) => {
     garantirEstrutura();
     res.json((db.cobranca.numeros || []).map(numeroPublico));
+    // atualiza foto em segundo plano pra quem ainda não tem (não atrasa a resposta)
+    (db.cobranca.numeros || []).forEach((n) => { if (!n.fotoPerfilUrl) atualizarFotoPerfil(n); });
   });
 
   async function assinarWebhook(n) {
@@ -306,6 +320,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     await assinarWebhook(novo);
     salvar();
     res.json(numeroPublico(novo));
+    atualizarFotoPerfil(novo);
   });
 
   app.put("/api/cobranca/numeros/:id", auth, gerenteOnly, async (req, res) => {
