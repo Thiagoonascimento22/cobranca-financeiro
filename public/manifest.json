@@ -1,0 +1,17 @@
+{
+  "name": "Instructiva — Sistema de Cobrança",
+  "short_name": "Cobrança IST",
+  "description": "Cobrança automatizada de inadimplência: disparo em massa, IA de cobrança (SDR + Negociadora), atendimento humano e acompanhamento pós-acordo.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b0b13",
+  "theme_color": "#0b0b13",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
