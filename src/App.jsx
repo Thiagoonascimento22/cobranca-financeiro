@@ -1,9 +1,38 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { Mp3Encoder } from "@breezystack/lamejs";
 import { api, getToken, setToken } from "./api.js";
 
 /* ============================================================
    ÍCONES (SVG inline, sem emoji)
    ============================================================ */
+/* converte qualquer gravação do navegador (webm/opus, ogg, etc.) pra MP3 —
+   formato que o WhatsApp aceita de verdade, sem precisar de nada no servidor */
+async function blobParaMp3(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  const audioCtx = new AudioCtx();
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  const samples = audioBuffer.getChannelData(0); // mono é suficiente pra voz
+  const sampleRate = audioBuffer.sampleRate;
+  const int16 = new Int16Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  const encoder = new Mp3Encoder(1, sampleRate, 96);
+  const blockSize = 1152;
+  const partes = [];
+  for (let i = 0; i < int16.length; i += blockSize) {
+    const chunk = int16.subarray(i, i + blockSize);
+    const buf = encoder.encodeBuffer(chunk);
+    if (buf.length > 0) partes.push(buf);
+  }
+  const fim = encoder.flush();
+  if (fim.length > 0) partes.push(fim);
+  audioCtx.close();
+  return new Blob(partes, { type: "audio/mpeg" });
+}
+
 const EMOJIS = ["😀", "😊", "🙂", "😉", "😅", "😢", "🙏", "👍", "👏", "🤝", "❤️", "🎉", "✅", "⚠️", "📌", "💰", "📅", "📄", "⏰", "🤔", "👋", "😬", "😮", "🙁"];
 
 const I = {
@@ -259,6 +288,7 @@ function Conversas() {
   const [ligando, setLigando] = useState(false);
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [gravando, setGravando] = useState(false);
+  const [convertendo, setConvertendo] = useState(false);
   const [gravandoSegundos, setGravandoSegundos] = useState(0);
   const gravadorRef = useRef(null);
   const gravadorChunksRef = useRef([]);
@@ -342,21 +372,28 @@ function Conversas() {
     if (!rec) return;
     clearInterval(gravadorTimerRef.current);
     setGravando(false);
-    const blob = await new Promise((resolve) => {
+    setConvertendo(true);
+    const blobOriginal = await new Promise((resolve) => {
       rec.onstop = () => resolve(new Blob(gravadorChunksRef.current, { type: rec.mimeType || "audio/ogg" }));
       rec.stop();
       rec.stream.getTracks().forEach((t) => t.stop());
     });
-    if (blob.size < 500) return; // gravação vazia/curta demais, ignora
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = String(reader.result).split(",")[1];
-      try {
-        await api.enviarAudio(ativoId, base64, blob.type || "audio/ogg");
-        setChat(await api.chat(ativoId));
-      } catch (e) { alert(e.message); }
-    };
-    reader.readAsDataURL(blob);
+    if (blobOriginal.size < 500) { setConvertendo(false); return; } // gravação vazia/curta demais, ignora
+    try {
+      const blobMp3 = await blobParaMp3(blobOriginal);
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = String(reader.result).split(",")[1];
+        try {
+          await api.enviarAudio(ativoId, base64, "audio/mpeg");
+          setChat(await api.chat(ativoId));
+        } catch (e) { alert(e.message); } finally { setConvertendo(false); }
+      };
+      reader.readAsDataURL(blobMp3);
+    } catch (e) {
+      alert("Não consegui converter o áudio: " + e.message);
+      setConvertendo(false);
+    }
   }
 
   function cancelarGravacao() {
@@ -457,14 +494,14 @@ function Conversas() {
                   ))}
                 </div>
               )}
-              {gravando ? (
+              {gravando || convertendo ? (
                 <div className="wa-input">
-                  <button className="btn btn-sm btn-ghost" onClick={cancelarGravacao} title="Cancelar gravação" style={{ flexShrink: 0, color: "var(--coral)" }}><I.trash style={{ width: 15, height: 15 }} /></button>
+                  <button className="btn btn-sm btn-ghost" onClick={cancelarGravacao} title="Cancelar" disabled={convertendo} style={{ flexShrink: 0, color: "var(--coral)" }}><I.trash style={{ width: 15, height: 15 }} /></button>
                   <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, color: "var(--coral)", fontWeight: 600, fontSize: 14 }}>
                     <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--coral)", display: "inline-block", animation: "pulse 1.2s infinite" }} />
-                    Gravando... {gravandoSegundos}s
+                    {convertendo ? "Preparando áudio..." : `Gravando... ${gravandoSegundos}s`}
                   </div>
-                  <button className="wa-send" onClick={pararGravacao} title="Parar e enviar">✓</button>
+                  <button className="wa-send" onClick={pararGravacao} title="Parar e enviar" disabled={convertendo}>✓</button>
                 </div>
               ) : (
                 <div className="wa-input">
