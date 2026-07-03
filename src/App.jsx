@@ -359,6 +359,17 @@ function Conversas() {
     reader.readAsDataURL(blob);
   }
 
+  function cancelarGravacao() {
+    const rec = gravadorRef.current;
+    if (rec) {
+      rec.onstop = null; // não faz nada ao parar, só descarta
+      try { rec.stop(); rec.stream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    }
+    clearInterval(gravadorTimerRef.current);
+    gravadorChunksRef.current = [];
+    setGravando(false);
+  }
+
   async function excluirConversa(id, e) {
     e.stopPropagation();
     if (!confirm("Excluir essa conversa? As mensagens somem pra sempre.")) return;
@@ -440,20 +451,29 @@ function Conversas() {
               </div>
               <ScrollFab show={showFab} onClick={irParaBaixo} />
               {emojiAberto && (
-                <div style={{ position: "absolute", bottom: 64, right: 16, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 12, padding: 10, boxShadow: "var(--shadow-lg)", display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 4, zIndex: 5, maxWidth: 280 }}>
+                <div style={{ position: "absolute", bottom: 64, left: 16, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 12, padding: 10, boxShadow: "var(--shadow-lg)", display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 4, zIndex: 5, maxWidth: 280 }}>
                   {EMOJIS.map((em) => (
                     <button key={em} onClick={() => { setTexto((t) => t + em); setEmojiAberto(false); }} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", padding: 4, borderRadius: 6 }}>{em}</button>
                   ))}
                 </div>
               )}
-              <div className="wa-input">
-                <button className="btn btn-sm btn-ghost" onClick={() => setEmojiAberto((v) => !v)} title="Emojis" style={{ flexShrink: 0 }}>🙂</button>
-                <input placeholder="Escreva uma mensagem..." value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && enviar()} />
-                <button className={"btn btn-sm " + (gravando ? "btn-danger" : "btn-ghost")} onClick={gravando ? pararGravacao : iniciarGravacao} title={gravando ? "Parar e enviar" : "Gravar áudio"} style={{ flexShrink: 0 }}>
-                  {gravando ? "⏹ " + gravandoSegundos + "s" : "🎤"}
-                </button>
-                <button className="wa-send" onClick={enviar}>Enviar</button>
-              </div>
+              {gravando ? (
+                <div className="wa-input">
+                  <button className="btn btn-sm btn-ghost" onClick={cancelarGravacao} title="Cancelar gravação" style={{ flexShrink: 0, color: "var(--coral)" }}><I.trash style={{ width: 15, height: 15 }} /></button>
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, color: "var(--coral)", fontWeight: 600, fontSize: 14 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--coral)", display: "inline-block", animation: "pulse 1.2s infinite" }} />
+                    Gravando... {gravandoSegundos}s
+                  </div>
+                  <button className="wa-send" onClick={pararGravacao} title="Parar e enviar">✓</button>
+                </div>
+              ) : (
+                <div className="wa-input">
+                  <button className="btn btn-sm btn-ghost" onClick={() => setEmojiAberto((v) => !v)} title="Emojis" style={{ flexShrink: 0 }}>🙂</button>
+                  <input placeholder="Escreva uma mensagem..." value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && enviar()} />
+                  <button className="btn btn-sm btn-ghost" onClick={iniciarGravacao} title="Gravar áudio" style={{ flexShrink: 0 }}>🎤</button>
+                  <button className="wa-send" onClick={enviar}>Enviar</button>
+                </div>
+              )}
             </>
           )}
         </div>

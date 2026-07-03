@@ -2001,7 +2001,7 @@ h1, h2, h3, h4, .topbar .greet, .panel-h h3, .login-card .ttl, .login-card h2, .
   -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); box-shadow: var(--shadow);
 }
 .wa-conv:hover { background: var(--row-hover); }
-.wa-conv.active { background: rgba(124,58,237,0.1); border-color: rgba(124,58,237,0.3); }
+.wa-conv.active { background: rgba(15,157,120,0.14); border-color: rgba(15,157,120,0.35); }
 .wa-bubble.them { background: var(--bubble-them); color: var(--text); border: 1px solid var(--glass-border); }
 .wa-bubble.me { background: var(--grad); color: #fff; box-shadow: var(--glow-brand); }
 .wa-bubble .t { opacity: 0.75; }
