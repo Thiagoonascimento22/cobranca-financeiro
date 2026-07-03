@@ -840,9 +840,9 @@ function IABuilder({ ia, papelInicial, iasNegociadoras, onClose, onSaved }) {
                   <input type="checkbox" checked={ativa} onChange={(e) => setAtiva(e.target.checked)} /> <label style={{ margin: 0 }}>IA ativa</label>
                 </div>
                 <div className="agx-field" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input type="checkbox" checked={c.respostaAudio} onChange={(e) => set("respostaAudio", e.target.checked)} /> <label style={{ margin: 0 }}>Responder por áudio (voz gerada por IA, via ElevenLabs)</label>
+                  <input type="checkbox" checked={c.respostaAudio} onChange={(e) => set("respostaAudio", e.target.checked)} /> <label style={{ margin: 0 }}>Permitir responder por áudio (voz gerada por IA, via ElevenLabs)</label>
                 </div>
-                {c.respostaAudio && <p className="agx-psub" style={{ marginTop: -6 }}>Precisa da API Key da ElevenLabs configurada em Ligações. Se a geração de voz falhar, ela cai pra texto automaticamente, sem travar a conversa.</p>}
+                {c.respostaAudio && <p className="agx-psub" style={{ marginTop: -6 }}>Ela não usa áudio por padrão — só responde em voz quando o aluno manda um áudio, ou pede explicitamente ("manda áudio", "pode falar"). Se o aluno pedir texto ("manda texto", "não consigo ouvir"), ela respeita e não volta pra áudio sozinha na mesma conversa. Precisa da API Key da ElevenLabs configurada em Ligações.</p>}
               </div>
             )}
             {secao === "persona" && (

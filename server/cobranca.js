@@ -105,6 +105,16 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (!d.startsWith("55")) d = "55" + d;
     return d;
   }
+  // celular brasileiro sempre tem 9 dígitos depois do DDD — a Meta às vezes manda o número
+  // sem esse 9 na resposta do WhatsApp, e aí a ligação de voz (Twilio) rejeita por não bater
+  // com o número verificado. Isso aqui garante o 9 antes de pedir a ligação.
+  function garantirNonoDigito(numeroComPais) {
+    const semPais = numeroComPais.replace(/^55/, "");
+    const ddd = semPais.slice(0, 2);
+    let resto = semPais.slice(2);
+    if (resto.length === 8) resto = "9" + resto;
+    return "55" + ddd + resto;
+  }
   function lim(s, n) { return String(s == null ? "" : s).slice(0, n); }
   function fmtMoedaBR(v) {
     const n = Number(v);
@@ -808,18 +818,30 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       }
 
       // rede de segurança por palavra-chave (não depende só do modelo lembrar da tag)
+      const ultLead = [...(chat.mensagens || [])].reverse().find((m) => m.role === "them");
+      const txtLead = ((ultLead && (ultLead.transcricao || ultLead.content)) || "").toLowerCase();
       if (!passarHumano) {
-        const ultLead = [...(chat.mensagens || [])].reverse().find((m) => m.role === "them");
-        const txtLead = ((ultLead && (ultLead.transcricao || ultLead.content)) || "").toLowerCase();
         if (SINAIS_ESCALONAMENTO.some((s) => txtLead.includes(s))) passarHumano = true;
       }
+
+      // decide se essa resposta vai por áudio: só quando o recurso está ligado na IA E
+      // (o lead pediu áudio, ou o lead mandou áudio) — nunca por padrão. Se o lead pedir
+      // texto explicitamente, guarda essa preferência na conversa e passa a respeitar sempre.
+      const PEDIU_TEXTO = ["manda texto", "manda por texto", "pode escrever", "por escrito", "não consigo ouvir", "nao consigo ouvir", "não escuto", "nao escuto", "sem áudio", "sem audio", "não manda áudio", "nao manda audio", "não manda mais áudio", "nao manda mais audio"];
+      const PEDIU_AUDIO = ["manda áudio", "manda audio", "pode falar", "manda um áudio", "manda um audio", "fala por áudio", "fala por audio", "manda voz", "responde em áudio", "responde em audio"];
+      if (PEDIU_TEXTO.some((s) => txtLead.includes(s))) chat.prefereAudio = false;
+      else if (PEDIU_AUDIO.some((s) => txtLead.includes(s))) chat.prefereAudio = true;
+
+      const respostaAudioHabilitada = !!(ia.config && ia.config.respostaAudio);
+      const leadMandouAudio = ultLead && ultLead.tipo === "audio";
+      const deveResponderAudio = respostaAudioHabilitada && chat.prefereAudio !== false && (chat.prefereAudio === true || leadMandouAudio);
 
       if (resposta) {
         const espera = tempoDigitacao(resposta);
         await mostrarDigitando(numeroCfg, chat.ultimaMsgLeadId);
         await new Promise((r) => setTimeout(r, espera));
         let enviouAudio = false;
-        if (ia.config && ia.config.respostaAudio) {
+        if (deveResponderAudio) {
           const audio = await gerarAudioTTS(resposta);
           if (audio) {
             try {
@@ -1621,7 +1643,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
         body: JSON.stringify({
           agent_id: v.elevenAgentId,
           agent_phone_number_id: v.elevenPhoneNumberId,
-          to_number: "+" + normalizaTelefone(chat.numero),
+          to_number: "+" + garantirNonoDigito(normalizaTelefone(chat.numero)),
           conversation_initiation_client_data: { dynamic_variables },
         }),
       });
