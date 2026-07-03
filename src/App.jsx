@@ -1670,7 +1670,7 @@ function TemplatesScreen() {
 
 function LigacoesScreen() {
   const [v, setV] = useState(null);
-  const [form, setForm] = useState({ twilioAccountSid: "", twilioAuthToken: "", twilioNumero: "", elevenApiKey: "", elevenAgentId: "", elevenPhoneNumberId: "", companyName: "", agentName: "", descontoMaxPct: 0, origemDebitoPadrao: "", ttsVoiceId: "" });
+  const [form, setForm] = useState({ twilioAccountSid: "", twilioAuthToken: "", twilioNumero: "", elevenApiKey: "", elevenAgentId: "", elevenPhoneNumberId: "", companyName: "", agentName: "", descontoMaxPct: 0, origemDebitoPadrao: "", ttsVoiceId: "", ttsEstabilidade: 0.35, ttsSimilaridade: 0.85, ttsEstilo: 0.4 });
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -1678,7 +1678,7 @@ function LigacoesScreen() {
     try {
       const r = await api.vozConfig();
       setV(r);
-      setForm((f) => ({ ...f, twilioAccountSid: r.twilioAccountSid, twilioNumero: r.twilioNumero, elevenAgentId: r.elevenAgentId, elevenPhoneNumberId: r.elevenPhoneNumberId, companyName: r.companyName, agentName: r.agentName, descontoMaxPct: r.descontoMaxPct, origemDebitoPadrao: r.origemDebitoPadrao, ttsVoiceId: r.ttsVoiceId }));
+      setForm((f) => ({ ...f, twilioAccountSid: r.twilioAccountSid, twilioNumero: r.twilioNumero, elevenAgentId: r.elevenAgentId, elevenPhoneNumberId: r.elevenPhoneNumberId, companyName: r.companyName, agentName: r.agentName, descontoMaxPct: r.descontoMaxPct, origemDebitoPadrao: r.origemDebitoPadrao, ttsVoiceId: r.ttsVoiceId, ttsEstabilidade: r.ttsEstabilidade, ttsSimilaridade: r.ttsSimilaridade, ttsEstilo: r.ttsEstilo }));
     } catch (_) {}
   }
   useEffect(() => { carregar(); }, []);
@@ -1746,6 +1746,20 @@ function LigacoesScreen() {
               <div className="field"><label>Origem do débito padrão ({"{{origem_debito}}"})</label><input className="input" value={form.origemDebitoPadrao} onChange={(e) => setForm({ ...form, origemDebitoPadrao: e.target.value })} placeholder="Mensalidade em atraso" /></div>
             </div>
             <div className="field"><label>Voz pra respostas em áudio no WhatsApp (Voice ID da ElevenLabs)</label><input className="input" value={form.ttsVoiceId} onChange={(e) => setForm({ ...form, ttsVoiceId: e.target.value })} placeholder="deixe em branco pra usar a voz padrão" /></div>
+
+            <div className="field">
+              <label>Estabilidade ({form.ttsEstabilidade.toFixed(2)}) — mais baixo = mais expressiva/natural, mais alto = mais uniforme (mas pode soar robótica)</label>
+              <input type="range" min="0" max="1" step="0.05" value={form.ttsEstabilidade} onChange={(e) => setForm({ ...form, ttsEstabilidade: Number(e.target.value) })} style={{ width: "100%" }} />
+            </div>
+            <div className="field">
+              <label>Fidelidade à voz original ({form.ttsSimilaridade.toFixed(2)}) — mais alto mantém o timbre mais fiel</label>
+              <input type="range" min="0" max="1" step="0.05" value={form.ttsSimilaridade} onChange={(e) => setForm({ ...form, ttsSimilaridade: Number(e.target.value) })} style={{ width: "100%" }} />
+            </div>
+            <div className="field">
+              <label>Expressividade ({form.ttsEstilo.toFixed(2)}) — mais alto = mais entonação/emoção na fala</label>
+              <input type="range" min="0" max="1" step="0.05" value={form.ttsEstilo} onChange={(e) => setForm({ ...form, ttsEstilo: Number(e.target.value) })} style={{ width: "100%" }} />
+            </div>
+            <p className="agx-psub">Já deixei ajustado num ponto que costuma soar mais natural (menos "robô"). Se quiser mexer, testa uma resposta de áudio depois de salvar pra ouvir a diferença.</p>
 
             <div className="agx-sep" />
             <h4 className="agx-h" style={{ marginBottom: 12 }}>Twilio (só referência — quem usa é a ElevenLabs)</h4>

@@ -302,11 +302,19 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     const v = db.cobranca.voz || {};
     if (!v.elevenApiKey) return null;
     const voiceId = v.ttsVoiceId || "21m00Tcm4TlvDq8ikWAM"; // voz padrão da ElevenLabs (Rachel), se não configurar outra
+    // estabilidade baixa + boost de similaridade alto = fala mais expressiva/natural, menos "robótica";
+    // estabilidade alta deixa a voz mais uniforme e monótona (é o padrão da API, por isso soa robô)
+    const estabilidade = v.ttsEstabilidade !== undefined ? v.ttsEstabilidade : 0.35;
+    const similaridade = v.ttsSimilaridade !== undefined ? v.ttsSimilaridade : 0.85;
+    const estilo = v.ttsEstilo !== undefined ? v.ttsEstilo : 0.4;
     try {
-      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "xi-api-key": v.elevenApiKey, Accept: "audio/mpeg" },
-        body: JSON.stringify({ text: texto, model_id: "eleven_multilingual_v2" }),
+        body: JSON.stringify({
+          text: texto, model_id: "eleven_multilingual_v2",
+          voice_settings: { stability: estabilidade, similarity_boost: similaridade, style: estilo, use_speaker_boost: true },
+        }),
       });
       if (!r.ok) { console.error("[cobranca] TTS falhou:", r.status, await r.text().catch(() => "")); return null; }
       const buf = Buffer.from(await r.arrayBuffer());
@@ -1530,6 +1538,9 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     return {
       elevenAgentId: v.elevenAgentId || "", elevenPhoneNumberId: v.elevenPhoneNumberId || "",
       temElevenKey: !!v.elevenApiKey, ttsVoiceId: v.ttsVoiceId || "",
+      ttsEstabilidade: v.ttsEstabilidade !== undefined ? v.ttsEstabilidade : 0.35,
+      ttsSimilaridade: v.ttsSimilaridade !== undefined ? v.ttsSimilaridade : 0.85,
+      ttsEstilo: v.ttsEstilo !== undefined ? v.ttsEstilo : 0.4,
       companyName: v.companyName || "Escola Instructiva", agentName: v.agentName || "Ana",
       descontoMaxPct: v.descontoMaxPct || 0, origemDebitoPadrao: v.origemDebitoPadrao || "",
       // Twilio: só referência/documentação — quem usa as credenciais é a própria ElevenLabs
@@ -1556,6 +1567,9 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (b.elevenAgentId !== undefined) v.elevenAgentId = lim(b.elevenAgentId, 100);
     if (b.elevenPhoneNumberId !== undefined) v.elevenPhoneNumberId = lim(b.elevenPhoneNumberId, 100);
     if (b.ttsVoiceId !== undefined) v.ttsVoiceId = lim(b.ttsVoiceId, 100);
+    if (b.ttsEstabilidade !== undefined) v.ttsEstabilidade = Math.max(0, Math.min(1, Number(b.ttsEstabilidade)));
+    if (b.ttsSimilaridade !== undefined) v.ttsSimilaridade = Math.max(0, Math.min(1, Number(b.ttsSimilaridade)));
+    if (b.ttsEstilo !== undefined) v.ttsEstilo = Math.max(0, Math.min(1, Number(b.ttsEstilo)));
     if (b.companyName !== undefined) v.companyName = lim(b.companyName, 100);
     if (b.agentName !== undefined) v.agentName = lim(b.agentName, 60);
     if (b.descontoMaxPct !== undefined) v.descontoMaxPct = Math.max(0, Math.min(100, Number(b.descontoMaxPct) || 0));
