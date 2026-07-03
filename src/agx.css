@@ -19,7 +19,7 @@
 .agx-progress-fill{height:100%;background:var(--brand);border-radius:99px;transition:width .3s}
 .agx-progress-pct{font-size:13px;font-weight:700;color:var(--brand);min-width:38px;text-align:right}
 .agx-body{flex:1;display:grid;grid-template-columns:220px 1fr 320px;min-height:0}
-.agx-side{border-right:1px solid var(--line);padding:14px 12px;overflow-y:auto;background:var(--surface-2)}
+.agx-side{border-right:1px solid var(--line);padding:14px 12px;overflow-y:auto;background:var(--surface-2);min-height:0}
 .agx-side-grupo{margin-bottom:14px}
 .agx-side-g{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--muted);padding:6px 10px 4px}
 .agx-side-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;border:none;background:transparent;border-radius:10px;cursor:pointer;color:var(--text);font-size:14px;text-align:left;margin-bottom:2px;transition:.15s}
@@ -29,11 +29,11 @@
 .agx-side-lb{flex:1}
 .agx-dot{width:20px;height:20px;border-radius:50%;background:var(--surface-2);color:var(--muted);font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .agx-dot.ok{background:rgba(16,185,129,.16);color:var(--mint)}
-.agx-main{padding:22px 26px;overflow-y:auto;min-width:0}
-.agx-preview{border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--surface-2);min-width:0}
+.agx-main{padding:22px 26px;overflow-y:auto;min-width:0;min-height:0}
+.agx-preview{border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--surface-2);min-width:0;min-height:0;overflow:hidden}
 .agx-preview-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line);font-size:14px;font-weight:600;color:var(--text)}
 .agx-reset{background:var(--surface-2);border:1px solid var(--line);color:var(--muted);font-size:12px;padding:5px 10px;border-radius:8px;cursor:default}
-.agx-preview-body{flex:1;padding:18px 16px;overflow-y:auto}
+.agx-preview-body{flex:1;padding:18px 16px;overflow-y:auto;min-height:0}
 .agx-preview-empty{font-size:13px;color:var(--muted);text-align:center;margin-top:30px;line-height:1.6}
 .agx-preview-input{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line)}
 .agx-preview-input .agx-input{flex:1;margin:0}
