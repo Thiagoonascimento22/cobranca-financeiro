@@ -1867,8 +1867,8 @@ export default function App() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="logo-infinite" style={{ width: 36, height: 36 }}>
-            <img src="/logo.png" alt="Instructiva" style={{ width: 30, height: 30, objectFit: "contain" }} />
+          <div className="logo-infinite" style={{ width: 50, height: 50 }}>
+            <img src="/logo.png" alt="Instructiva" style={{ width: 42, height: 42, objectFit: "contain" }} />
           </div>
           <span className="tag">Cobrança Instructiva</span>
         </div>
