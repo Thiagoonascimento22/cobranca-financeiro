@@ -4,6 +4,8 @@ import { api, getToken, setToken } from "./api.js";
 /* ============================================================
    ÍCONES (SVG inline, sem emoji)
    ============================================================ */
+const EMOJIS = ["😀", "😊", "🙂", "😉", "😅", "😢", "🙏", "👍", "👏", "🤝", "❤️", "🎉", "✅", "⚠️", "📌", "💰", "📅", "📄", "⏰", "🤔", "👋", "😬", "😮", "🙁"];
+
 const I = {
   dash: (p) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><rect x="7" y="11" width="3" height="6" rx="1" /><rect x="12" y="7" width="3" height="10" rx="1" /><rect x="17" y="13" width="3" height="4" rx="1" /></svg>),
   chat: (p) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>),
@@ -255,6 +257,12 @@ function Conversas() {
   const [busca, setBusca] = useState("");
   const [ias, setIas] = useState([]);
   const [ligando, setLigando] = useState(false);
+  const [emojiAberto, setEmojiAberto] = useState(false);
+  const [gravando, setGravando] = useState(false);
+  const [gravandoSegundos, setGravandoSegundos] = useState(0);
+  const gravadorRef = useRef(null);
+  const gravadorChunksRef = useRef([]);
+  const gravadorTimerRef = useRef(null);
   const msgsRef = useRef(null);
   const [showFab, irParaBaixo] = useScrollFab(msgsRef, [chat && chat.mensagens && chat.mensagens.length]);
 
@@ -309,6 +317,46 @@ function Conversas() {
       await api.ligar(ativoId);
       setChat(await api.chat(ativoId));
     } catch (e) { alert(e.message); } finally { setLigando(false); }
+  }
+
+  async function iniciarGravacao() {
+    if (!ativoId) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const opcoes = MediaRecorder.isTypeSupported("audio/ogg;codecs=opus") ? { mimeType: "audio/ogg;codecs=opus" } : {};
+      const rec = new MediaRecorder(stream, opcoes);
+      gravadorChunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size > 0) gravadorChunksRef.current.push(e.data); };
+      rec.start();
+      gravadorRef.current = rec;
+      setGravando(true);
+      setGravandoSegundos(0);
+      gravadorTimerRef.current = setInterval(() => setGravandoSegundos((s) => s + 1), 1000);
+    } catch (e) {
+      alert("Não consegui acessar o microfone: " + e.message);
+    }
+  }
+
+  async function pararGravacao() {
+    const rec = gravadorRef.current;
+    if (!rec) return;
+    clearInterval(gravadorTimerRef.current);
+    setGravando(false);
+    const blob = await new Promise((resolve) => {
+      rec.onstop = () => resolve(new Blob(gravadorChunksRef.current, { type: rec.mimeType || "audio/ogg" }));
+      rec.stop();
+      rec.stream.getTracks().forEach((t) => t.stop());
+    });
+    if (blob.size < 500) return; // gravação vazia/curta demais, ignora
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = String(reader.result).split(",")[1];
+      try {
+        await api.enviarAudio(ativoId, base64, blob.type || "audio/ogg");
+        setChat(await api.chat(ativoId));
+      } catch (e) { alert(e.message); }
+    };
+    reader.readAsDataURL(blob);
   }
 
   async function excluirConversa(id, e) {
@@ -373,14 +421,37 @@ function Conversas() {
               <div className="wa-msgs" ref={msgsRef}>
                 {(chat.mensagens || []).map((m, i) => (
                   <div key={i} className={"wa-bubble " + (m.role === "me" ? "me" : "them")}>
-                    {m.content}
+                    {m.tipo === "audio" && m.arquivo ? (
+                      <div>
+                        <audio controls src={"/media/" + m.arquivo} style={{ width: 220, height: 36 }} />
+                        {m.content && m.content !== "🎤 Áudio" && <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>{m.content}</div>}
+                      </div>
+                    ) : m.transcricao ? (
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.75, marginBottom: 2 }}>🎤 Áudio (transcrito)</div>
+                        {m.transcricao}
+                      </div>
+                    ) : (
+                      m.content
+                    )}
                     <div className="t">{new Date(m.ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}{m.porIA ? " · IA" : ""}</div>
                   </div>
                 ))}
               </div>
               <ScrollFab show={showFab} onClick={irParaBaixo} />
+              {emojiAberto && (
+                <div style={{ position: "absolute", bottom: 64, right: 16, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 12, padding: 10, boxShadow: "var(--shadow-lg)", display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 4, zIndex: 5, maxWidth: 280 }}>
+                  {EMOJIS.map((em) => (
+                    <button key={em} onClick={() => { setTexto((t) => t + em); setEmojiAberto(false); }} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", padding: 4, borderRadius: 6 }}>{em}</button>
+                  ))}
+                </div>
+              )}
               <div className="wa-input">
+                <button className="btn btn-sm btn-ghost" onClick={() => setEmojiAberto((v) => !v)} title="Emojis" style={{ flexShrink: 0 }}>🙂</button>
                 <input placeholder="Escreva uma mensagem..." value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && enviar()} />
+                <button className={"btn btn-sm " + (gravando ? "btn-danger" : "btn-ghost")} onClick={gravando ? pararGravacao : iniciarGravacao} title={gravando ? "Parar e enviar" : "Gravar áudio"} style={{ flexShrink: 0 }}>
+                  {gravando ? "⏹ " + gravandoSegundos + "s" : "🎤"}
+                </button>
                 <button className="wa-send" onClick={enviar}>Enviar</button>
               </div>
             </>
@@ -588,6 +659,7 @@ function configVaziaFront() {
     pbAbertura: "", pbConfirmacao: "", pbColeta: "", pbNegociacao: "", pbFechamento: "", pbRecuperacao: "",
     escQuando: "", escFrase: "", encerrarCriterios: "",
     formasPagamento: "", parcelamentoMax: 0, descontoMaximoPct: 0, regrasNegociacao: "",
+    respostaAudio: false,
   };
 }
 
@@ -710,6 +782,10 @@ function IABuilder({ ia, papelInicial, iasNegociadoras, onClose, onSaved }) {
                 <div className="agx-field" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <input type="checkbox" checked={ativa} onChange={(e) => setAtiva(e.target.checked)} /> <label style={{ margin: 0 }}>IA ativa</label>
                 </div>
+                <div className="agx-field" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="checkbox" checked={c.respostaAudio} onChange={(e) => set("respostaAudio", e.target.checked)} /> <label style={{ margin: 0 }}>Responder por áudio (voz gerada por IA, via ElevenLabs)</label>
+                </div>
+                {c.respostaAudio && <p className="agx-psub" style={{ marginTop: -6 }}>Precisa da API Key da ElevenLabs configurada em Ligações. Se a geração de voz falhar, ela cai pra texto automaticamente, sem travar a conversa.</p>}
               </div>
             )}
             {secao === "persona" && (
@@ -1537,7 +1613,7 @@ function TemplatesScreen() {
 
 function LigacoesScreen() {
   const [v, setV] = useState(null);
-  const [form, setForm] = useState({ twilioAccountSid: "", twilioAuthToken: "", twilioNumero: "", elevenApiKey: "", elevenAgentId: "", elevenPhoneNumberId: "", companyName: "", agentName: "", descontoMaxPct: 0, origemDebitoPadrao: "" });
+  const [form, setForm] = useState({ twilioAccountSid: "", twilioAuthToken: "", twilioNumero: "", elevenApiKey: "", elevenAgentId: "", elevenPhoneNumberId: "", companyName: "", agentName: "", descontoMaxPct: 0, origemDebitoPadrao: "", ttsVoiceId: "" });
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -1545,7 +1621,7 @@ function LigacoesScreen() {
     try {
       const r = await api.vozConfig();
       setV(r);
-      setForm((f) => ({ ...f, twilioAccountSid: r.twilioAccountSid, twilioNumero: r.twilioNumero, elevenAgentId: r.elevenAgentId, elevenPhoneNumberId: r.elevenPhoneNumberId, companyName: r.companyName, agentName: r.agentName, descontoMaxPct: r.descontoMaxPct, origemDebitoPadrao: r.origemDebitoPadrao }));
+      setForm((f) => ({ ...f, twilioAccountSid: r.twilioAccountSid, twilioNumero: r.twilioNumero, elevenAgentId: r.elevenAgentId, elevenPhoneNumberId: r.elevenPhoneNumberId, companyName: r.companyName, agentName: r.agentName, descontoMaxPct: r.descontoMaxPct, origemDebitoPadrao: r.origemDebitoPadrao, ttsVoiceId: r.ttsVoiceId }));
     } catch (_) {}
   }
   useEffect(() => { carregar(); }, []);
@@ -1612,6 +1688,7 @@ function LigacoesScreen() {
               <div className="field"><label>Desconto máximo à vista % ({"{{desconto_pct}}"})</label><input className="input" type="number" min="0" max="100" value={form.descontoMaxPct} onChange={(e) => setForm({ ...form, descontoMaxPct: Number(e.target.value) })} /></div>
               <div className="field"><label>Origem do débito padrão ({"{{origem_debito}}"})</label><input className="input" value={form.origemDebitoPadrao} onChange={(e) => setForm({ ...form, origemDebitoPadrao: e.target.value })} placeholder="Mensalidade em atraso" /></div>
             </div>
+            <div className="field"><label>Voz pra respostas em áudio no WhatsApp (Voice ID da ElevenLabs)</label><input className="input" value={form.ttsVoiceId} onChange={(e) => setForm({ ...form, ttsVoiceId: e.target.value })} placeholder="deixe em branco pra usar a voz padrão" /></div>
 
             <div className="agx-sep" />
             <h4 className="agx-h" style={{ marginBottom: 12 }}>Twilio (só referência — quem usa é a ElevenLabs)</h4>

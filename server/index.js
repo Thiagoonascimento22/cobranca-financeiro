@@ -238,6 +238,7 @@ const cobranca = instalarCobranca({
    FRONTEND (build do Vite)
    ============================================================ */
 const dist = path.join(__dirname, "..", "dist");
+app.use("/media", express.static(MEDIA_DIR));
 app.use(express.static(dist));
 app.get("*", (req, res) => {
   res.sendFile(path.join(dist, "index.html"));

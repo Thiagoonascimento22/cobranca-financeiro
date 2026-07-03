@@ -294,6 +294,31 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       return (await r.text() || "").trim() || null;
     } catch (e) { return null; }
   }
+  // gera um áudio (mp3) a partir de um texto, usando a mesma chave da ElevenLabs
+  // configurada em Ligações. mp3 é aceito nativamente pelo WhatsApp, sem precisar
+  // converter formato (webhook de ligação usa a mesma credencial, mas isso aqui é TTS simples).
+  async function gerarAudioTTS(texto) {
+    garantirEstrutura();
+    const v = db.cobranca.voz || {};
+    if (!v.elevenApiKey) return null;
+    const voiceId = v.ttsVoiceId || "21m00Tcm4TlvDq8ikWAM"; // voz padrão da ElevenLabs (Rachel), se não configurar outra
+    try {
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "xi-api-key": v.elevenApiKey, Accept: "audio/mpeg" },
+        body: JSON.stringify({ text: texto, model_id: "eleven_multilingual_v2" }),
+      });
+      if (!r.ok) { console.error("[cobranca] TTS falhou:", r.status, await r.text().catch(() => "")); return null; }
+      const buf = Buffer.from(await r.arrayBuffer());
+      return { buffer: buf, mimetype: "audio/mpeg" };
+    } catch (e) { console.error("[cobranca] TTS erro:", e.message); return null; }
+  }
+  function salvarMidiaLocal(buffer, mimetype, prefixo) {
+    if (!MEDIA_DIR || !fs || !path) return null;
+    const fname = `${prefixo}_${Date.now()}.${extPorMime(mimetype) || "bin"}`;
+    fs.writeFileSync(path.join(MEDIA_DIR, fname), buffer);
+    return fname;
+  }
   function montarComponents(variaveis) {
     if (!variaveis || !variaveis.length) return undefined;
     return [{ type: "body", parameters: variaveis.map((v) => ({ type: "text", text: String(v) })) }];
@@ -474,6 +499,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       escQuando: "", escFrase: "", encerrarCriterios: "",
       // só usados pela Negociadora — o "treino" do limite de autonomia
       formasPagamento: "", parcelamentoMax: 0, descontoMaximoPct: 0, regrasNegociacao: "",
+      respostaAudio: false, // se true, essa IA responde por áudio (voz gerada) em vez de texto
     };
   }
   function sanitizaConfig(raw) {
@@ -500,6 +526,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     c.parcelamentoMax = Math.max(0, Math.min(60, Number(b.parcelamentoMax) || 0));
     c.descontoMaximoPct = Math.max(0, Math.min(100, Number(b.descontoMaximoPct) || 0));
     c.regrasNegociacao = lim(b.regrasNegociacao, 4000);
+    c.respostaAudio = !!b.respostaAudio;
     return c;
   }
   function sanitizaConhecimento(arr) {
@@ -783,11 +810,28 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
         const espera = tempoDigitacao(resposta);
         await mostrarDigitando(numeroCfg, chat.ultimaMsgLeadId);
         await new Promise((r) => setTimeout(r, espera));
-        await enviarTextoOficial(numeroCfg, chat.numero, resposta);
-        const ts = Date.now();
-        chat.mensagens.push({ role: "me", content: resposta, ts, porIA: true });
+        let enviouAudio = false;
+        if (ia.config && ia.config.respostaAudio) {
+          const audio = await gerarAudioTTS(resposta);
+          if (audio) {
+            try {
+              const mediaId = await uploadMidiaMeta(numeroCfg, audio.buffer, audio.mimetype, "resposta");
+              await enviarMidiaOficial(numeroCfg, chat.numero, "audio", mediaId);
+              const arquivo = salvarMidiaLocal(audio.buffer, audio.mimetype, "ia");
+              const ts = Date.now();
+              chat.mensagens.push({ role: "me", content: resposta, ts, porIA: true, tipo: "audio", arquivo, mimetype: audio.mimetype });
+              chat.atualizadoEm = ts;
+              enviouAudio = true;
+            } catch (e) { console.error("[cobranca] falha ao enviar áudio da IA, caindo pra texto:", e.message); }
+          }
+        }
+        if (!enviouAudio) {
+          await enviarTextoOficial(numeroCfg, chat.numero, resposta);
+          const ts = Date.now();
+          chat.mensagens.push({ role: "me", content: resposta, ts, porIA: true });
+          chat.atualizadoEm = ts;
+        }
         if (chat.mensagens.length > 300) chat.mensagens = chat.mensagens.slice(-300);
-        chat.atualizadoEm = ts;
       }
 
       if (!Array.isArray(chat.notas)) chat.notas = [];
@@ -1135,6 +1179,33 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  /* humano grava um áudio no navegador e manda como mensagem de voz */
+  app.post("/api/cobranca/chats/:id/send-audio", auth, async (req, res) => {
+    const chat = db.waChats[req.params.id];
+    if (!chat || chat.canal !== "oficial") return res.status(404).json({ error: "Conversa não encontrada" });
+    if (req.user.role !== "gerente" && chat.atendenteId !== req.user.id) return res.status(403).json({ error: "Sem acesso a essa conversa" });
+    const numeroCfg = acharNumero(chat.numeroOficialId);
+    if (!numeroCfg) return res.status(400).json({ error: "Número não encontrado" });
+    const b = req.body || {};
+    if (!b.audioBase64) return res.status(400).json({ error: "Áudio vazio" });
+    try {
+      const buffer = Buffer.from(b.audioBase64, "base64");
+      const mimetype = b.mimetype || "audio/ogg";
+      const mediaId = await uploadMidiaMeta(numeroCfg, buffer, mimetype, "gravacao");
+      await enviarMidiaOficial(numeroCfg, chat.numero, "audio", mediaId);
+      const arquivo = salvarMidiaLocal(buffer, mimetype, "humano");
+      const ts = Date.now();
+      chat.mensagens.push({ role: "me", content: "🎤 Áudio", ts, tipo: "audio", arquivo, mimetype });
+      chat.atualizadoEm = ts;
+      salvar();
+      res.json({ ok: true });
+    } catch (e) {
+      // formatos de áudio gravados no navegador nem sempre são aceitos pelo WhatsApp
+      // (ele exige AAC, AMR, MP3, MP4 ou OGG/Opus) — se a Meta recusar, o erro chega aqui
+      res.status(500).json({ error: "A Meta recusou esse áudio: " + e.message + " — tenta gravar de novo ou usa outro navegador." });
+    }
+  });
+
   app.post("/api/cobranca/chats/:id/atribuir", auth, (req, res) => {
     const chat = db.waChats[req.params.id];
     if (!chat || chat.canal !== "oficial") return res.status(404).json({ error: "Conversa não encontrada" });
@@ -1458,7 +1529,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
   function vozPublica(v) {
     return {
       elevenAgentId: v.elevenAgentId || "", elevenPhoneNumberId: v.elevenPhoneNumberId || "",
-      temElevenKey: !!v.elevenApiKey,
+      temElevenKey: !!v.elevenApiKey, ttsVoiceId: v.ttsVoiceId || "",
       companyName: v.companyName || "Escola Instructiva", agentName: v.agentName || "Ana",
       descontoMaxPct: v.descontoMaxPct || 0, origemDebitoPadrao: v.origemDebitoPadrao || "",
       // Twilio: só referência/documentação — quem usa as credenciais é a própria ElevenLabs
@@ -1484,6 +1555,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (b.elevenApiKey) v.elevenApiKey = lim(b.elevenApiKey, 200);
     if (b.elevenAgentId !== undefined) v.elevenAgentId = lim(b.elevenAgentId, 100);
     if (b.elevenPhoneNumberId !== undefined) v.elevenPhoneNumberId = lim(b.elevenPhoneNumberId, 100);
+    if (b.ttsVoiceId !== undefined) v.ttsVoiceId = lim(b.ttsVoiceId, 100);
     if (b.companyName !== undefined) v.companyName = lim(b.companyName, 100);
     if (b.agentName !== undefined) v.agentName = lim(b.agentName, 60);
     if (b.descontoMaxPct !== undefined) v.descontoMaxPct = Math.max(0, Math.min(100, Number(b.descontoMaxPct) || 0));
