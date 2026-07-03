@@ -1177,9 +1177,16 @@ function DisparoScreen() {
           <p style={{ fontSize: 12.5, margin: "0 0 8px", color: iaId ? "var(--mint)" : "var(--amber)", fontWeight: 600 }}>
             {iaId ? `✓ IA vinculada: ${ias.find((i) => i.id === iaId)?.nome || "..."} — vai responder sozinha quem responder` : "⚠ Sem IA selecionada — quem responder vai direto pro atendente humano"}
           </p>
-          <button className="btn btn-primary" disabled={enviando || !contatos.length} onClick={disparar} style={{ width: "100%", fontSize: 15, padding: "13px" }}>
-            {enviando ? "Disparando..." : `Disparar pra ${contatos.length} contato(s)`}
-          </button>
+          <div style={{ display: "flex", gap: 10 }}>
+            {contatos.length > 0 && (
+              <button className="btn btn-ghost" disabled={enviando} onClick={() => { setContatos([]); setArquivoNome(""); if (fileRef.current) fileRef.current.value = ""; }} style={{ flex: "0 0 auto", padding: "13px 20px" }}>
+                Cancelar
+              </button>
+            )}
+            <button className="btn btn-primary" disabled={enviando || !contatos.length} onClick={disparar} style={{ flex: 1, fontSize: 15, padding: "13px" }}>
+              {enviando ? "Disparando..." : `Disparar pra ${contatos.length} contato(s)`}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1188,7 +1195,8 @@ function DisparoScreen() {
         {campanhas.map((c) => (
           <div className="cob-row" key={c.id} style={{ cursor: "pointer" }} onClick={() => setCampanhaAberta(c.id)}>
             <div className="info"><div className="nm">{c.nome}</div><div className="sub">{c.enviados}/{c.total} enviados · {c.responderam} responderam · {c.falhas} falhas · {c.status}</div></div>
-            {c.pendentesCount > 0 && <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); api.retomarCampanha(c.id).then(carregar); }}>Retomar</button>}
+            {c.status === "rodando" && <button className="btn btn-sm btn-ghost" style={{ color: "var(--coral)" }} onClick={(e) => { e.stopPropagation(); if (confirm("Cancelar esse disparo? Quem ainda não recebeu, não vai receber.")) api.cancelarCampanha(c.id).then(carregar); }}>Cancelar</button>}
+            {c.status !== "rodando" && c.pendentesCount > 0 && <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); api.retomarCampanha(c.id).then(carregar); }}>Retomar</button>}
             <button className="btn btn-sm btn-ghost" style={{ color: "var(--coral)" }} onClick={(e) => { e.stopPropagation(); if (confirm("Excluir essa campanha? Isso também apaga as conversas que nasceram dela (mensagens somem).")) api.excluirCampanha(c.id).then(carregar); }}><I.trash style={{ width: 14, height: 14 }} /></button>
           </div>
         ))}
@@ -1315,16 +1323,22 @@ function TemplatesScreen() {
   const [numeroId, setNumeroId] = useState("");
   const [todos, setTodos] = useState([]);
   const [modalAberto, setModalAberto] = useState(false);
-  const [form, setForm] = useState({ nome: "", corpo: "", categoria: "UTILITY", idioma: "pt_BR" });
+  const [form, setForm] = useState({ numeroId: "", nome: "", corpo: "", categoria: "UTILITY", idioma: "pt_BR" });
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [msgOk, setMsgOk] = useState("");
 
-  useEffect(() => { api.numeros().then(setNumeros).catch(() => {}); }, []);
+  useEffect(() => {
+    api.numeros().then((r) => {
+      setNumeros(r);
+      if (r.length === 1) { setNumeroId(r[0].id); setForm((f) => ({ ...f, numeroId: r[0].id })); } // só 1 número? já seleciona
+    }).catch(() => {});
+  }, []);
 
-  async function carregarTemplates() {
-    if (!numeroId) { setTodos([]); return; }
-    try { const r = await api.templates(numeroId); setTodos(r.todos || r.templates || []); } catch (_) { setTodos([]); }
+  async function carregarTemplates(id) {
+    const alvo = id || numeroId;
+    if (!alvo) { setTodos([]); return; }
+    try { const r = await api.templates(alvo); setTodos(r.todos || r.templates || []); } catch (_) { setTodos([]); }
   }
   useEffect(() => { carregarTemplates(); }, [numeroId]);
 
@@ -1333,14 +1347,25 @@ function TemplatesScreen() {
 
   function contarVars(texto) { return (texto.match(/\{\{\d+\}\}/g) || []).length; }
 
+  function abrirModal() {
+    setForm({ numeroId: numeroId || (numeros[0] && numeros[0].id) || "", nome: "", corpo: "", categoria: "UTILITY", idioma: "pt_BR" });
+    setErro(""); setMsgOk("");
+    setModalAberto(true);
+  }
+
   async function criar(e) {
     e.preventDefault();
-    setErro(""); setMsgOk(""); setSalvando(true);
+    setErro(""); setMsgOk("");
+    if (!form.numeroId) { setErro("Escolha pra qual número é esse template"); return; }
+    if (!form.nome.trim()) { setErro("Dê um nome pro template"); return; }
+    if (!form.corpo.trim()) { setErro("Escreve o texto da mensagem"); return; }
+    setSalvando(true);
     try {
-      const r = await api.criarTemplate(numeroId, form);
+      const r = await api.criarTemplate(form.numeroId, form);
       setMsgOk(`Enviado pra análise da Meta (status: ${r.status || "PENDING"}). Aprovação costuma levar de minutos a algumas horas.`);
-      setForm({ nome: "", corpo: "", categoria: "UTILITY", idioma: "pt_BR" });
-      setTimeout(carregarTemplates, 1500);
+      setForm({ ...form, nome: "", corpo: "" });
+      setNumeroId(form.numeroId);
+      setTimeout(() => carregarTemplates(form.numeroId), 1500);
     } catch (e) { setErro(e.message); } finally { setSalvando(false); }
   }
 
@@ -1348,7 +1373,7 @@ function TemplatesScreen() {
     <div className="content">
       <div className="page-head">
         <div><h2>Templates</h2><p>Modelos de mensagem aprovados pela Meta pra iniciar conversa.</p></div>
-        <button className="btn btn-primary" disabled={!numeroId} onClick={() => setModalAberto(true)}><I.plus style={{ width: 15, height: 15 }} /> Criar template</button>
+        <button className="btn btn-primary" onClick={abrirModal}><I.plus style={{ width: 15, height: 15 }} /> Criar template</button>
       </div>
 
       <div className="cob-card">
@@ -1382,12 +1407,19 @@ function TemplatesScreen() {
       {modalAberto && (
         <Modal titulo="Criar template" subtitulo="Vai direto pra análise da Meta — não fica disponível na hora." onClose={() => setModalAberto(false)} largura={560}>
           <form onSubmit={criar}>
-            <div className="field"><label>Nome (só letras minúsculas e _, sem espaço)</label><input className="input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="cobranca_abertura" autoFocus /></div>
+            <div className="field"><label>Número (WABA que vai submeter)</label>
+              <select className="select" value={form.numeroId} onChange={(e) => setForm({ ...form, numeroId: e.target.value })} autoFocus>
+                <option value="">Selecione</option>
+                {numeros.map((n) => <option key={n.id} value={n.id}>{n.apelido}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>Nome (só letras minúsculas e _, sem espaço)</label><input className="input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="cobranca_chamada_simples" /></div>
             <div className="row2">
               <div className="field"><label>Categoria</label>
                 <select className="select" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>
                   <option value="UTILITY">Utilitário (recomendado pra cobrança)</option>
                   <option value="MARKETING">Marketing</option>
+                  <option value="AUTHENTICATION">Autenticação</option>
                 </select>
               </div>
               <div className="field"><label>Idioma</label>
@@ -1399,8 +1431,8 @@ function TemplatesScreen() {
             </div>
             <div className="field">
               <label>Texto da mensagem</label>
-              <textarea className="input" rows={5} value={form.corpo} onChange={(e) => setForm({ ...form, corpo: e.target.value })} placeholder="Olá {{1}}, identificamos uma pendência de {{2}} referente à sua mensalidade. Podemos conversar sobre isso?" />
-              <p className="agx-psub" style={{ marginTop: 6, marginBottom: 0 }}>Use {"{{1}}"}, {"{{2}}"}... pra criar variáveis (nome, valor, etc). Esse aqui tem {contarVars(form.corpo)} variável(is).</p>
+              <textarea className="input" rows={5} value={form.corpo} onChange={(e) => setForm({ ...form, corpo: e.target.value })} placeholder="Olá! Aqui é da Escola Instructiva. Identificamos uma pendência em seu nome e gostaríamos de conversar sobre isso. Pode nos responder por aqui?" />
+              <p className="agx-psub" style={{ marginTop: 6, marginBottom: 0 }}>Use {"{{1}}"}, {"{{2}}"}... só se quiser variáveis (opcional). Esse aqui tem {contarVars(form.corpo)} variável(is).</p>
             </div>
             {erro && <div className="err">{erro}</div>}
             {msgOk && <p className="agx-psub" style={{ color: "var(--mint)" }}>{msgOk}</p>}

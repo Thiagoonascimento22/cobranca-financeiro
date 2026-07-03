@@ -423,7 +423,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
         method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + n.token },
         body: JSON.stringify({
           name: nome, language: idioma,
-          category: categoria === "MARKETING" ? "MARKETING" : "UTILITY",
+          category: ["MARKETING", "AUTHENTICATION"].includes(categoria) ? categoria : "UTILITY",
           components: [{ type: "BODY", text: corpo }],
         }),
       });
@@ -979,6 +979,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     campanha._rodando = true;
     campanha.status = "rodando";
     while (campanha.pendentes && campanha.pendentes.length > 0) {
+      if (campanha.status === "cancelando") break; // usuário pediu pra cancelar — para antes do próximo envio
       // respeita o horário comercial — se estiver fora, espera 10min e checa de novo
       if (!dentroDoHorario()) { await new Promise((r) => setTimeout(r, 10 * 60 * 1000)); continue; }
       const c = campanha.pendentes[0];
@@ -1014,10 +1015,27 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       salvar();
       await new Promise((r) => setTimeout(r, 120));
     }
-    campanha.status = "concluida"; campanha._rodando = false;
-    delete campanha.pendentes;
+    const foiCancelada = campanha.status === "cancelando";
+    campanha.status = foiCancelada ? "cancelada" : "concluida";
+    campanha._rodando = false;
+    if (foiCancelada) {
+      const restantes = (campanha.pendentes || []).length;
+      campanha.notaCancelamento = `Cancelada com ${restantes} contato(s) que ainda não tinham recebido`;
+      // não apaga campanha.pendentes de propósito — dá pra retomar depois, se quiser
+    } else {
+      delete campanha.pendentes;
+    }
     salvar();
   }
+
+  app.post("/api/cobranca/campanhas/:id/cancelar", auth, gerenteOnly, (req, res) => {
+    const campanha = (db.cobranca.campanhas || []).find((x) => x.id === req.params.id);
+    if (!campanha) return res.status(404).json({ error: "Campanha não encontrada" });
+    if (!campanha.pendentes || !campanha.pendentes.length) return res.status(400).json({ error: "Essa campanha já terminou, não tem mais o que cancelar" });
+    campanha.status = "cancelando"; // o loop em andamento vê isso e para sozinho, no máximo em alguns segundos
+    salvar();
+    res.json({ ok: true });
+  });
 
   app.post("/api/cobranca/campanhas/:id/retomar", auth, gerenteOnly, (req, res) => {
     const campanha = (db.cobranca.campanhas || []).find((x) => x.id === req.params.id);

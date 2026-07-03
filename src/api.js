@@ -60,6 +60,7 @@ export const api = {
   campanhas: () => req("GET", "/api/cobranca/campanhas"),
   campanha: (id) => req("GET", "/api/cobranca/campanhas/" + id),
   retomarCampanha: (id) => req("POST", "/api/cobranca/campanhas/" + id + "/retomar"),
+  cancelarCampanha: (id) => req("POST", "/api/cobranca/campanhas/" + id + "/cancelar"),
   excluirCampanha: (id) => req("DELETE", "/api/cobranca/campanhas/" + id),
 
   // conversas
