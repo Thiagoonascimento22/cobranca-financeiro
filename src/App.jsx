@@ -615,13 +615,12 @@ function IABuilder({ ia, papelInicial, iasNegociadoras, onClose, onSaved }) {
     { k: "identidade", lb: "Identificação" }, { k: "persona", lb: "Persona" },
     { k: "objecoes", lb: "Objeções e FAQ" }, { k: "playbook", lb: "Roteiro" },
     { k: "escalacao", lb: "Escalação" }, { k: "conhecimento", lb: "Base de conhecimento" },
-    { k: "teste", lb: "Testar" },
   ];
   const SECOES_NEG = [
     { k: "identidade", lb: "Identificação" }, { k: "persona", lb: "Persona" },
     { k: "negociacao", lb: "Regras de negociação" }, { k: "objecoes", lb: "Objeções e FAQ" },
     { k: "playbook", lb: "Roteiro" }, { k: "escalacao", lb: "Escalação" },
-    { k: "conhecimento", lb: "Base de conhecimento" }, { k: "teste", lb: "Testar" },
+    { k: "conhecimento", lb: "Base de conhecimento" },
   ];
   const secoes = papel === "sdr" ? SECOES_SDR : SECOES_NEG; // negociadora e completa usam as mesmas seções
   const PAPEL_LABEL = { sdr: "SDR", negociadora: "Negociadora", completa: "IA Completa" };
@@ -805,27 +804,33 @@ function IABuilder({ ia, papelInicial, iasNegociadoras, onClose, onSaved }) {
                 <button className="agx-add" onClick={() => { if (novoKb.nome && novoKb.texto) { setConhecimento([...conhecimento, { ...novoKb }]); setNovoKb({ nome: "", texto: "" }); } }}>+ Adicionar</button>
               </div>
             )}
-            {secao === "teste" && (
-              <div>
-                <h4 className="agx-h">Testar a IA</h4>
-                <p className="agx-psub">Simula uma conversa sem mandar WhatsApp de verdade.</p>
-                <div className="agx-grid2">
-                  <div className="agx-field"><label>Valor da dívida (teste)</label><input className="agx-input" value={testeDivida.valor} onChange={(e) => setTesteDivida({ ...testeDivida, valor: e.target.value })} /></div>
-                  <div className="agx-field"><label>Vencimento (teste)</label><input className="agx-input" type="date" value={testeDivida.vencimento} onChange={(e) => setTesteDivida({ ...testeDivida, vencimento: e.target.value })} /></div>
-                </div>
-                <div ref={testeRef} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 12, minHeight: 200, maxHeight: 320, overflowY: "auto", marginBottom: 10, background: "var(--surface-2)" }}>
-                  {testeHist.length === 0 && <div className="cob-empty">Manda uma mensagem como se fosse o aluno.</div>}
-                  {testeHist.map((m, i) => (
-                    <div key={i} className={"wa-bubble " + (m.role === "me" ? "me" : "them")} style={{ marginBottom: 8 }}>{m.content}</div>
-                  ))}
-                </div>
-                <div className="wa-input" style={{ position: "static" }}>
-                  <input placeholder="Escreva como o aluno..." value={testeMsg} onChange={(e) => setTesteMsg(e.target.value)} onKeyDown={(e) => e.key === "Enter" && testar()} />
-                  <button className="wa-send" onClick={testar} disabled={testando}>{testando ? "..." : "Enviar"}</button>
+          </main>
+          <aside className="agx-preview">
+            <div className="agx-preview-head">
+              <span>Teste ao vivo</span>
+              {testeHist.length > 0 && <button className="agx-reset" onClick={() => setTesteHist([])} style={{ cursor: "pointer" }}>Reiniciar</button>}
+            </div>
+            <div style={{ padding: "10px 16px 0" }}>
+              <div className="agx-field" style={{ marginBottom: 8 }}>
+                <label style={{ fontSize: 11 }}>Curso / valor / vencimento (simulados)</label>
+                <input className="agx-input" style={{ marginBottom: 6, fontSize: 12.5, padding: "6px 10px" }} value={testeDivida.curso || ""} onChange={(e) => setTesteDivida({ ...testeDivida, curso: e.target.value })} placeholder="Curso" />
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input className="agx-input" style={{ fontSize: 12.5, padding: "6px 10px" }} value={testeDivida.valor} onChange={(e) => setTesteDivida({ ...testeDivida, valor: e.target.value })} placeholder="Valor" />
+                  <input className="agx-input" style={{ fontSize: 12.5, padding: "6px 10px" }} type="date" value={testeDivida.vencimento} onChange={(e) => setTesteDivida({ ...testeDivida, vencimento: e.target.value })} />
                 </div>
               </div>
-            )}
-          </main>
+            </div>
+            <div className="agx-preview-body" ref={testeRef}>
+              {testeHist.length === 0 && <div className="agx-preview-empty">Escreve uma mensagem como se fosse o aluno — qualquer campo que você editar ao lado já entra no teste na hora, sem precisar salvar.</div>}
+              {testeHist.map((m, i) => (
+                <div key={i} className={"wa-bubble " + (m.role === "me" ? "me" : "them")} style={{ marginBottom: 8 }}>{m.content}</div>
+              ))}
+            </div>
+            <div className="agx-preview-input">
+              <input className="agx-input" placeholder="Escreva como o aluno..." value={testeMsg} onChange={(e) => setTesteMsg(e.target.value)} onKeyDown={(e) => e.key === "Enter" && testar()} />
+              <button className="agx-send" style={{ opacity: 1, cursor: "pointer" }} onClick={testar} disabled={testando}>{testando ? "..." : "➤"}</button>
+            </div>
+          </aside>
         </div>
       </div>
     </div>

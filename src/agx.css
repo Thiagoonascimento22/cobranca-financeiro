@@ -18,7 +18,7 @@
 .agx-progress-bar{flex:1;height:7px;background:var(--surface-2);border-radius:99px;overflow:hidden}
 .agx-progress-fill{height:100%;background:var(--brand);border-radius:99px;transition:width .3s}
 .agx-progress-pct{font-size:13px;font-weight:700;color:var(--brand);min-width:38px;text-align:right}
-.agx-body{flex:1;display:grid;grid-template-columns:220px 1fr;min-height:0}
+.agx-body{flex:1;display:grid;grid-template-columns:220px 1fr 320px;min-height:0}
 .agx-side{border-right:1px solid var(--line);padding:14px 12px;overflow-y:auto;background:var(--surface-2)}
 .agx-side-grupo{margin-bottom:14px}
 .agx-side-g{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--muted);padding:6px 10px 4px}
