@@ -574,6 +574,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     P.push(`- NUNCA exponha a dívida ou dados do aluno pra terceiros (família, colegas, quem responder no lugar dele).`);
     P.push(`- NUNCA use tom de ameaça, constrangimento ou pressão abusiva. Não use "negativação", "protesto" ou "ação judicial" como ameaça.`);
     P.push(`- NUNCA confirme ou negue dívida pra alguém que não comprovou ser o titular.`);
+    P.push(`\nÁUDIO OU TEXTO: por padrão você responde em texto. Se o aluno pedir explicitamente pra você responder por áudio/voz (de qualquer jeito que ele formular isso), inclua a tag [MODO_AUDIO] no final da sua resposta. Se o aluno pedir pra você parar de mandar áudio e voltar a escrever (de qualquer jeito que ele formular isso — "não consigo ouvir", "manda por texto", "sem áudio", etc.), inclua a tag [MODO_TEXTO] no final. Essas tags nunca aparecem pro aluno.`);
     return P.join("\n");
   }
 
@@ -809,6 +810,9 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
 
       if (resposta.includes("[PASSAR_HUMANO]")) { passarHumano = true; resposta = resposta.replace(/\[PASSAR_HUMANO\]/g, "").trim(); }
       if (resposta.includes("[PASSAR_NEGOCIADORA]")) { passarNegociadora = true; resposta = resposta.replace(/\[PASSAR_NEGOCIADORA\]/g, "").trim(); }
+      let pedirModoTexto = false, pedirModoAudio = false;
+      if (resposta.includes("[MODO_TEXTO]")) { pedirModoTexto = true; resposta = resposta.replace(/\[MODO_TEXTO\]/g, "").trim(); }
+      if (resposta.includes("[MODO_AUDIO]")) { pedirModoAudio = true; resposta = resposta.replace(/\[MODO_AUDIO\]/g, "").trim(); }
       const mMotivo = resposta.match(/\[MOTIVO:\s*([^\]]+)\]/i);
       if (mMotivo) { chat.motivoInadimplencia = lim(mMotivo[1], 500); resposta = resposta.replace(/\[MOTIVO:[^\]]+\]/i, "").trim(); }
       const mAcordo = resposta.match(/\[ACORDO_PROPOSTO:\s*parcelas=(\d+);\s*valor_parcela=([\d.,]+);\s*vencimento=(\d{4}-\d{2}-\d{2})\]/i);
@@ -827,10 +831,17 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       // decide se essa resposta vai por áudio: só quando o recurso está ligado na IA E
       // (o lead pediu áudio, ou o lead mandou áudio) — nunca por padrão. Se o lead pedir
       // texto explicitamente, guarda essa preferência na conversa e passa a respeitar sempre.
-      const PEDIU_TEXTO = ["manda texto", "manda por texto", "pode escrever", "por escrito", "não consigo ouvir", "nao consigo ouvir", "não escuto", "nao escuto", "sem áudio", "sem audio", "não manda áudio", "nao manda audio", "não manda mais áudio", "nao manda mais audio"];
-      const PEDIU_AUDIO = ["manda áudio", "manda audio", "pode falar", "manda um áudio", "manda um audio", "fala por áudio", "fala por audio", "manda voz", "responde em áudio", "responde em audio"];
-      if (PEDIU_TEXTO.some((s) => txtLead.includes(s))) chat.prefereAudio = false;
-      else if (PEDIU_AUDIO.some((s) => txtLead.includes(s))) chat.prefereAudio = true;
+      // Prioridade 1: a própria IA já entendeu o pedido e avisou com a tag (mais confiável,
+      // não depende de adivinhar toda variação de frase possível).
+      // Prioridade 2: rede de segurança por palavra-chave, caso a IA esqueça a tag.
+      if (pedirModoTexto) chat.prefereAudio = false;
+      else if (pedirModoAudio) chat.prefereAudio = true;
+      else {
+        const PEDIU_TEXTO = ["manda texto", "manda por texto", "pode escrever", "por escrito", "não consigo ouvir", "nao consigo ouvir", "não posso ouvir", "nao posso ouvir", "não dá pra ouvir", "nao da pra ouvir", "não escuto", "nao escuto", "sem áudio", "sem audio", "não manda áudio", "nao manda audio", "não manda mais áudio", "nao manda mais audio", "só texto", "so texto", "prefiro texto", "pode ser texto", "responde em texto", "fala por texto", "sem voz"];
+        const PEDIU_AUDIO = ["manda áudio", "manda audio", "pode falar", "manda um áudio", "manda um audio", "fala por áudio", "fala por audio", "manda voz", "responde em áudio", "responde em audio", "prefiro áudio", "prefiro audio", "quero ouvir"];
+        if (PEDIU_TEXTO.some((s) => txtLead.includes(s))) chat.prefereAudio = false;
+        else if (PEDIU_AUDIO.some((s) => txtLead.includes(s))) chat.prefereAudio = true;
+      }
 
       const respostaAudioHabilitada = !!(ia.config && ia.config.respostaAudio);
       const leadMandouAudio = ultLead && ultLead.tipo === "audio";
