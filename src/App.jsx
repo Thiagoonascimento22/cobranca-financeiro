@@ -26,6 +26,7 @@ const I = {
   check: (p) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.8 10A10 10 0 1 1 17 3.3" /><path d="m9 11 3 3L22 4" /></svg>),
   cog: (p) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>),
   doc: (p) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2" /></svg>),
+  magnify: (p) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>),
 };
 
 /* parser de CSV simples (sem dependência externa) */
@@ -987,6 +988,9 @@ function DisparoScreen() {
   const [modo, setModo] = useState("csv");
   const [manual, setManual] = useState({ nome: "", telefone: "", valor: "", vencimento: "", codigoAluno: "" });
   const [campanhaAberta, setCampanhaAberta] = useState(null);
+  const [csvBruto, setCsvBruto] = useState(null); // { header, linhas } — guardado pra poder refiltrar sem re-upload
+  const [filtroVenc, setFiltroVenc] = useState("todos"); // todos | vencendo | vencidos
+  const [filtroDias, setFiltroDias] = useState(7);
   const fileRef = useRef(null);
 
   const templateInfo = templates.find((t) => t.name === template) || null;
@@ -1007,6 +1011,69 @@ function DisparoScreen() {
   // sempre que trocar de template, limpa a lista (as variáveis mudam o formato dos contatos)
   useEffect(() => { setContatos([]); }, [template]);
 
+  function hojeISO() { return new Date().toISOString().slice(0, 10); }
+  function diasEntre(vencISO) {
+    if (!vencISO) return null;
+    const a = new Date(hojeISO() + "T00:00:00-03:00");
+    const b = new Date(vencISO + "T00:00:00-03:00");
+    if (isNaN(b.getTime())) return null;
+    return Math.round((b - a) / 86400000); // positivo = ainda vai vencer, negativo = já venceu
+  }
+
+  // aceita vencimento em DD/MM/AAAA (como Excel exporta no Brasil) ou já em AAAA-MM-DD
+  function paraDataISO(v) {
+    const s = String(v || "").trim();
+    if (!s) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // já tá no formato certo
+    const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // 12/07/2026 ou 5/7/2026
+    if (br) {
+      const [, d, m, a] = br;
+      return `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    }
+    return s; // formato desconhecido — deixa passar, mas pode não filtrar certo
+  }
+
+  function montarContatos(header, linhas) {
+    const idxNome = header.findIndex((h) => h.includes("nome"));
+    const idxTel = header.findIndex((h) => h.includes("telefone") || h.includes("celular") || h.includes("whats"));
+    const idxValor = header.findIndex((h) => h.includes("valor"));
+    const idxVenc = header.findIndex((h) => h.includes("vencimento") || h.includes("venc"));
+    const idxCod = header.findIndex((h) => h.includes("codigo") || h.includes("matricula"));
+    const idxCpf = header.findIndex((h) => h.includes("cpf"));
+    const idxEmail = header.findIndex((h) => h.includes("email") || h.includes("e-mail"));
+    if (idxTel < 0) { setErro("Não achei a coluna de telefone no CSV. Cabeçalho encontrado: " + header.join(", ")); return null; }
+    if (filtroVenc !== "todos" && idxVenc < 0) { setErro("Pra filtrar por vencimento, o CSV precisa ter a coluna 'vencimento'."); return null; }
+    const idxVars = [];
+    for (let n = 1; n <= Math.max(nVars, 1); n++) {
+      idxVars.push(header.findIndex((h) => h === "variavel" + n || h === "var" + n));
+    }
+    let out = linhas.map((l) => {
+      const nome = idxNome >= 0 ? l[idxNome] : "";
+      const variaveis = [];
+      for (let n = 0; n < nVars; n++) {
+        const idx = idxVars[n];
+        variaveis.push(idx >= 0 && l[idx] ? l[idx] : (n === 0 ? nome : ""));
+      }
+      return {
+        nome, telefone: l[idxTel], variaveis,
+        divida: {
+          valor: idxValor >= 0 ? l[idxValor].replace(",", ".") : "",
+          vencimento: idxVenc >= 0 ? paraDataISO(l[idxVenc]) : "",
+          codigoAluno: idxCod >= 0 ? l[idxCod] : "",
+          cpf: idxCpf >= 0 ? l[idxCpf] : "",
+          email: idxEmail >= 0 ? l[idxEmail] : "",
+        },
+      };
+    }).filter((c) => c.telefone);
+
+    if (filtroVenc === "vencendo") {
+      out = out.filter((c) => { const d = diasEntre(c.divida.vencimento); return d !== null && d >= 0 && d <= filtroDias; });
+    } else if (filtroVenc === "vencidos") {
+      out = out.filter((c) => { const d = diasEntre(c.divida.vencimento); return d !== null && d < 0; });
+    }
+    return out;
+  }
+
   function onArquivo(e) {
     const f = e.target.files[0];
     if (!f) return;
@@ -1015,42 +1082,20 @@ function DisparoScreen() {
     reader.onload = () => {
       try {
         const { header, linhas } = parseCSV(String(reader.result));
-        const idxNome = header.findIndex((h) => h.includes("nome"));
-        const idxTel = header.findIndex((h) => h.includes("telefone") || h.includes("celular") || h.includes("whats"));
-        const idxValor = header.findIndex((h) => h.includes("valor"));
-        const idxVenc = header.findIndex((h) => h.includes("vencimento") || h.includes("venc"));
-        const idxCod = header.findIndex((h) => h.includes("codigo") || h.includes("matricula"));
-        const idxCpf = header.findIndex((h) => h.includes("cpf"));
-        const idxEmail = header.findIndex((h) => h.includes("email") || h.includes("e-mail"));
-        if (idxTel < 0) { setErro("Não achei a coluna de telefone no CSV. Cabeçalho encontrado: " + header.join(", ")); return; }
-        // colunas de variável: "variavel1", "var1", "variavel2"... se não achar, usa o nome como {{1}}
-        const idxVars = [];
-        for (let n = 1; n <= Math.max(nVars, 1); n++) {
-          idxVars.push(header.findIndex((h) => h === "variavel" + n || h === "var" + n));
-        }
-        const out = linhas.map((l) => {
-          const nome = idxNome >= 0 ? l[idxNome] : "";
-          const variaveis = [];
-          for (let n = 0; n < nVars; n++) {
-            const idx = idxVars[n];
-            variaveis.push(idx >= 0 && l[idx] ? l[idx] : (n === 0 ? nome : ""));
-          }
-          return {
-            nome, telefone: l[idxTel], variaveis,
-            divida: {
-              valor: idxValor >= 0 ? l[idxValor].replace(",", ".") : "",
-              vencimento: idxVenc >= 0 ? l[idxVenc] : "",
-              codigoAluno: idxCod >= 0 ? l[idxCod] : "",
-              cpf: idxCpf >= 0 ? l[idxCpf] : "",
-              email: idxEmail >= 0 ? l[idxEmail] : "",
-            },
-          };
-        }).filter((c) => c.telefone);
-        setContatos(out);
+        setCsvBruto({ header, linhas });
         setErro("");
+        const out = montarContatos(header, linhas);
+        if (out) setContatos(out);
       } catch (e) { setErro("Erro ao ler o CSV: " + e.message); }
     };
     reader.readAsText(f, "utf-8");
+  }
+
+  function reaplicarFiltro() {
+    if (!csvBruto) return;
+    setErro("");
+    const out = montarContatos(csvBruto.header, csvBruto.linhas);
+    if (out) setContatos(out);
   }
 
   function adicionarManual() {
@@ -1075,7 +1120,7 @@ function DisparoScreen() {
     setEnviando(true);
     try {
       await api.disparar({ numeroId, template, iaId: iaId || null, nomeCampanha: nomeCampanha || template, contatos });
-      setContatos([]); setArquivoNome(""); setNomeCampanha("");
+      setContatos([]); setArquivoNome(""); setNomeCampanha(""); setCsvBruto(null);
       if (fileRef.current) fileRef.current.value = "";
       carregar();
     } catch (e) { setErro(e.message); } finally { setEnviando(false); }
@@ -1132,13 +1177,35 @@ function DisparoScreen() {
           </div>
 
           {modo === "csv" ? (
-            <label className="upload-box" htmlFor="csv-input">
-              <input id="csv-input" ref={fileRef} type="file" accept=".csv,text/csv" onChange={onArquivo} />
-              <I.upload className="ic" />
-              <div className="t">{arquivoNome || "Clique para escolher o arquivo CSV"}</div>
-              <div className="s">colunas: nome, telefone, valor, vencimento, código do aluno{nVars > 0 ? ", variavel1..." + nVars : ""}</div>
-              <div className="s">opcionais: cpf, email</div>
-            </label>
+            <div>
+              <div className="field">
+                <label>Quem incluir</label>
+                <select className="select" value={filtroVenc} onChange={(e) => setFiltroVenc(e.target.value)}>
+                  <option value="todos">Todo mundo do CSV</option>
+                  <option value="vencendo">Só quem vai vencer nos próximos X dias (ainda não venceu)</option>
+                  <option value="vencidos">Só quem já venceu</option>
+                </select>
+              </div>
+              {filtroVenc === "vencendo" && (
+                <div className="field" style={{ maxWidth: 220 }}>
+                  <label>Quantos dias à frente</label>
+                  <input className="input" type="number" min="1" max="60" value={filtroDias} onChange={(e) => setFiltroDias(Number(e.target.value))} />
+                </div>
+              )}
+              <label className="upload-box" htmlFor="csv-input">
+                <input id="csv-input" ref={fileRef} type="file" accept=".csv,text/csv" onChange={onArquivo} />
+                <I.upload className="ic" />
+                <div className="t">{arquivoNome || "Clique para escolher o arquivo CSV"}</div>
+                <div className="s">colunas: nome, telefone, valor, vencimento, código do aluno{nVars > 0 ? ", variavel1..." + nVars : ""}</div>
+                <div className="s">vencimento aceita 12/07/2026 ou 2026-07-12 — os dois formatos funcionam</div>
+                <div className="s">opcionais: cpf, email</div>
+              </label>
+              {csvBruto && filtroVenc !== "todos" && (
+                <button className="btn btn-sm btn-ghost" style={{ marginTop: 10 }} onClick={reaplicarFiltro}>
+                  <I.magnify style={{ width: 13, height: 13 }} /> Reaplicar filtro (mudei o critério acima)
+                </button>
+              )}
+            </div>
           ) : (
             <div>
               <div className="row2">
@@ -1186,7 +1253,7 @@ function DisparoScreen() {
           </p>
           <div style={{ display: "flex", gap: 10 }}>
             {contatos.length > 0 && (
-              <button className="btn btn-ghost" disabled={enviando} onClick={() => { setContatos([]); setArquivoNome(""); if (fileRef.current) fileRef.current.value = ""; }} style={{ flex: "0 0 auto", padding: "13px 20px" }}>
+              <button className="btn btn-ghost" disabled={enviando} onClick={() => { setContatos([]); setArquivoNome(""); setCsvBruto(null); if (fileRef.current) fileRef.current.value = ""; }} style={{ flex: "0 0 auto", padding: "13px 20px" }}>
                 Cancelar
               </button>
             )}
