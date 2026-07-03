@@ -106,7 +106,18 @@ select.select:focus, select.input:focus { border-color: var(--brand); box-shadow
 .scroll-fab:hover { transform: translateY(-2px); }
 .scroll-fab svg { width: 18px; height: 18px; }
 
-/* ---- estado de cobrança (badge no chat) ---- */
+/* ---- anel "infinito" em volta da logo — sugere operação contínua/24h ---- */
+.logo-infinite { position: relative; display: flex; align-items: center; justify-content: center; }
+.logo-infinite::before {
+  content: ""; position: absolute; inset: -3px; border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--brand), var(--brand-2), transparent 40%, transparent 60%, var(--brand));
+  animation: logoSpin 6s linear infinite;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+}
+.logo-infinite img { position: relative; z-index: 1; border-radius: 50%; background: var(--card); }
+@keyframes logoSpin { to { transform: rotate(360deg); } }
+
 .estado-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px; letter-spacing: .01em; display: inline-block; }
 .estado-badge.nao_contatado { background: var(--surface-2); color: var(--muted); }
 .estado-badge.em_conversa { background: rgba(14,165,233,.14); color: var(--cyan); }

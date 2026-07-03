@@ -25,6 +25,7 @@ const I = {
   alert: (p) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4M12 17h.01" /></svg>),
   check: (p) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.8 10A10 10 0 1 1 17 3.3" /><path d="m9 11 3 3L22 4" /></svg>),
   cog: (p) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>),
+  doc: (p) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2" /></svg>),
 };
 
 /* parser de CSV simples (sem dependência externa) */
@@ -129,7 +130,9 @@ function Login({ onLogin }) {
   return (
     <div className="login-wrap">
       <div className="login-card">
-        <img src="/logo.png" alt="Instructiva" style={{ width: 64, height: 64, objectFit: "contain", margin: "0 auto 10px", display: "block" }} />
+        <div className="logo-infinite" style={{ width: 76, height: 76, margin: "0 auto 10px" }}>
+          <img src="/logo.png" alt="Instructiva" style={{ width: 64, height: 64, objectFit: "contain", display: "block" }} />
+        </div>
         <div className="ttl">Sistema de Cobrança</div>
         <h2>Instructiva</h2>
         <p className="hi">Entre com seu usuário do financeiro</p>
@@ -1010,6 +1013,8 @@ function DisparoScreen() {
         const idxValor = header.findIndex((h) => h.includes("valor"));
         const idxVenc = header.findIndex((h) => h.includes("vencimento") || h.includes("venc"));
         const idxCod = header.findIndex((h) => h.includes("codigo") || h.includes("matricula"));
+        const idxCpf = header.findIndex((h) => h.includes("cpf"));
+        const idxEmail = header.findIndex((h) => h.includes("email") || h.includes("e-mail"));
         if (idxTel < 0) { setErro("Não achei a coluna de telefone no CSV. Cabeçalho encontrado: " + header.join(", ")); return; }
         // colunas de variável: "variavel1", "var1", "variavel2"... se não achar, usa o nome como {{1}}
         const idxVars = [];
@@ -1029,6 +1034,8 @@ function DisparoScreen() {
               valor: idxValor >= 0 ? l[idxValor].replace(",", ".") : "",
               vencimento: idxVenc >= 0 ? l[idxVenc] : "",
               codigoAluno: idxCod >= 0 ? l[idxCod] : "",
+              cpf: idxCpf >= 0 ? l[idxCpf] : "",
+              email: idxEmail >= 0 ? l[idxEmail] : "",
             },
           };
         }).filter((c) => c.telefone);
@@ -1123,6 +1130,7 @@ function DisparoScreen() {
               <I.upload className="ic" />
               <div className="t">{arquivoNome || "Clique para escolher o arquivo CSV"}</div>
               <div className="s">colunas: nome, telefone, valor, vencimento, código do aluno{nVars > 0 ? ", variavel1..." + nVars : ""}</div>
+              <div className="s">opcionais: cpf, email</div>
             </label>
           ) : (
             <div>
@@ -1147,13 +1155,15 @@ function DisparoScreen() {
           {contatos.length > 0 && (
             <div className="contatos-preview">
               <table>
-                <thead><tr><th>Nome</th><th>Telefone</th><th>Valor</th><th>Vencimento</th>{nVars > 0 && <th>Variáveis</th>}<th></th></tr></thead>
+                <thead><tr><th>Nome</th><th>Telefone</th><th>Valor</th><th>Vencimento</th><th>CPF</th><th>E-mail</th>{nVars > 0 && <th>Variáveis</th>}<th></th></tr></thead>
                 <tbody>
                   {contatos.map((c, i) => (
                     <tr key={i}>
                       <td>{c.nome || "—"}</td><td>{c.telefone}</td>
                       <td>{c.divida?.valor ? fmtMoeda(c.divida.valor) : "—"}</td>
                       <td>{c.divida?.vencimento || "—"}</td>
+                      <td>{c.divida?.cpf || "—"}</td>
+                      <td>{c.divida?.email || "—"}</td>
                       {nVars > 0 && <td>{(c.variaveis || []).join(" · ") || "—"}</td>}
                       <td><button className="btn btn-sm btn-ghost" onClick={() => removerContato(i)}><I.x style={{ width: 12, height: 12 }} /></button></td>
                     </tr>
@@ -1300,6 +1310,111 @@ function AcordosScreen() {
    LIGAÇÕES — Twilio + ElevenLabs (config inicial; motor de discagem
    e IA de voz entram na próxima etapa)
    ============================================================ */
+function TemplatesScreen() {
+  const [numeros, setNumeros] = useState([]);
+  const [numeroId, setNumeroId] = useState("");
+  const [todos, setTodos] = useState([]);
+  const [modalAberto, setModalAberto] = useState(false);
+  const [form, setForm] = useState({ nome: "", corpo: "", categoria: "UTILITY", idioma: "pt_BR" });
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+  const [msgOk, setMsgOk] = useState("");
+
+  useEffect(() => { api.numeros().then(setNumeros).catch(() => {}); }, []);
+
+  async function carregarTemplates() {
+    if (!numeroId) { setTodos([]); return; }
+    try { const r = await api.templates(numeroId); setTodos(r.todos || r.templates || []); } catch (_) { setTodos([]); }
+  }
+  useEffect(() => { carregarTemplates(); }, [numeroId]);
+
+  const STATUS_COR = { APPROVED: "pago", PENDING: "negociando", REJECTED: "perdido" };
+  const STATUS_LABEL = { APPROVED: "Aprovado", PENDING: "Em análise", REJECTED: "Rejeitado" };
+
+  function contarVars(texto) { return (texto.match(/\{\{\d+\}\}/g) || []).length; }
+
+  async function criar(e) {
+    e.preventDefault();
+    setErro(""); setMsgOk(""); setSalvando(true);
+    try {
+      const r = await api.criarTemplate(numeroId, form);
+      setMsgOk(`Enviado pra análise da Meta (status: ${r.status || "PENDING"}). Aprovação costuma levar de minutos a algumas horas.`);
+      setForm({ nome: "", corpo: "", categoria: "UTILITY", idioma: "pt_BR" });
+      setTimeout(carregarTemplates, 1500);
+    } catch (e) { setErro(e.message); } finally { setSalvando(false); }
+  }
+
+  return (
+    <div className="content">
+      <div className="page-head">
+        <div><h2>Templates</h2><p>Modelos de mensagem aprovados pela Meta pra iniciar conversa.</p></div>
+        <button className="btn btn-primary" disabled={!numeroId} onClick={() => setModalAberto(true)}><I.plus style={{ width: 15, height: 15 }} /> Criar template</button>
+      </div>
+
+      <div className="cob-card">
+        <div className="cob-card-body">
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>Número</label>
+            <select className="select" value={numeroId} onChange={(e) => setNumeroId(e.target.value)}>
+              <option value="">Selecione um número pra ver os templates dele</option>
+              {numeros.map((n) => <option key={n.id} value={n.id}>{n.apelido}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {numeroId && (
+        <div className="cob-card">
+          <div className="cob-card-h"><h3>Templates desse número</h3></div>
+          {todos.map((t) => (
+            <div className="cob-row" key={t.name}>
+              <div className="info">
+                <div className="nm">{t.name} {t.vars > 0 && <span className="cob-pill off" style={{ marginLeft: 6 }}>{t.vars} variável(is)</span>}</div>
+                <div className="sub">{t.texto}</div>
+              </div>
+              <span className={"estado-badge " + (STATUS_COR[t.status] || "nao_contatado")}>{STATUS_LABEL[t.status] || t.status}</span>
+            </div>
+          ))}
+          {todos.length === 0 && <div className="cob-empty">Nenhum template ainda pra esse número — clica em "Criar template".</div>}
+        </div>
+      )}
+
+      {modalAberto && (
+        <Modal titulo="Criar template" subtitulo="Vai direto pra análise da Meta — não fica disponível na hora." onClose={() => setModalAberto(false)} largura={560}>
+          <form onSubmit={criar}>
+            <div className="field"><label>Nome (só letras minúsculas e _, sem espaço)</label><input className="input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="cobranca_abertura" autoFocus /></div>
+            <div className="row2">
+              <div className="field"><label>Categoria</label>
+                <select className="select" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>
+                  <option value="UTILITY">Utilitário (recomendado pra cobrança)</option>
+                  <option value="MARKETING">Marketing</option>
+                </select>
+              </div>
+              <div className="field"><label>Idioma</label>
+                <select className="select" value={form.idioma} onChange={(e) => setForm({ ...form, idioma: e.target.value })}>
+                  <option value="pt_BR">Português (Brasil)</option>
+                  <option value="en_US">Inglês (EUA)</option>
+                </select>
+              </div>
+            </div>
+            <div className="field">
+              <label>Texto da mensagem</label>
+              <textarea className="input" rows={5} value={form.corpo} onChange={(e) => setForm({ ...form, corpo: e.target.value })} placeholder="Olá {{1}}, identificamos uma pendência de {{2}} referente à sua mensalidade. Podemos conversar sobre isso?" />
+              <p className="agx-psub" style={{ marginTop: 6, marginBottom: 0 }}>Use {"{{1}}"}, {"{{2}}"}... pra criar variáveis (nome, valor, etc). Esse aqui tem {contarVars(form.corpo)} variável(is).</p>
+            </div>
+            {erro && <div className="err">{erro}</div>}
+            {msgOk && <p className="agx-psub" style={{ color: "var(--mint)" }}>{msgOk}</p>}
+            <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+              <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setModalAberto(false)}>Fechar</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} disabled={salvando}>{salvando ? "Enviando..." : "Enviar pra aprovação"}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function LigacoesScreen() {
   const [v, setV] = useState(null);
   const [form, setForm] = useState({ twilioAccountSid: "", twilioAuthToken: "", twilioNumero: "", elevenApiKey: "", elevenAgentId: "", elevenPhoneNumberId: "", companyName: "", agentName: "", descontoMaxPct: 0, origemDebitoPadrao: "" });
@@ -1414,6 +1529,7 @@ const NAV = [
   { k: "conversas", lb: "Conversas", ico: I.chat },
   { k: "ias", lb: "IAs (SDR / Negociadora)", ico: I.spark },
   { k: "disparo", lb: "Disparo em massa", ico: I.send },
+  { k: "templates", lb: "Templates", ico: I.doc },
   { k: "acordos", lb: "Acordos (pós-acordo)", ico: I.cash },
   { k: "ligacoes", lb: "Ligações (voz)", ico: I.phone },
   { k: "numeros", lb: "Números", ico: I.pipe },
@@ -1448,7 +1564,9 @@ export default function App() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <img src="/logo.png" alt="Instructiva" style={{ width: 30, height: 30, objectFit: "contain" }} />
+          <div className="logo-infinite" style={{ width: 36, height: 36 }}>
+            <img src="/logo.png" alt="Instructiva" style={{ width: 30, height: 30, objectFit: "contain" }} />
+          </div>
           <span className="tag">Cobrança Instructiva</span>
         </div>
         <nav className="nav">
@@ -1479,6 +1597,7 @@ export default function App() {
         {secao === "equipe" && <Equipe />}
         {secao === "ias" && <IAsScreen />}
         {secao === "disparo" && <DisparoScreen />}
+        {secao === "templates" && <TemplatesScreen />}
         {secao === "acordos" && <AcordosScreen />}
         {secao === "ligacoes" && <LigacoesScreen />}
       </main>

@@ -936,6 +936,8 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (d.valor !== undefined && d.valor !== "") out.valor = Number(d.valor) || 0;
     if (d.vencimento) out.vencimento = lim(d.vencimento, 10);
     if (d.codigoAluno) out.codigoAluno = lim(d.codigoAluno, 60);
+    if (d.cpf) out.cpf = lim(String(d.cpf).replace(/[^\d]/g, ""), 14);
+    if (d.email) out.email = lim(String(d.email).trim(), 120);
     return Object.keys(out).length ? out : null;
   }
 
