@@ -221,6 +221,12 @@ function PainelScreen() {
           <div className="val">{m.acordosQuebrados}</div>
           <div className="sub">{m.parcelasAtrasadas} parcela(s) em atraso</div>
         </div>
+        <div className="dash-card warn">
+          <div className="ic-wrap"><I.alert /></div>
+          <div className="lab">Vencidos sem acordo</div>
+          <div className="val">{m.vencidosSemAcordo}</div>
+          <div className="sub">passou o prazo original, ninguém negociou</div>
+        </div>
       </div>
 
       <div className="funnel-panel">
@@ -329,6 +335,7 @@ function Conversas() {
                 <div className="mid">
                   <div className="nm">{c.nome}{c.divida && c.divida.valor ? ` — ${fmtMoeda(c.divida.valor)}` : ""}</div>
                   <div className="last">
+                    {c.vencimentoEstourado && <span className="estado-badge perdido" style={{ marginRight: 6 }}>⚠ vencido s/ acordo</span>}
                     {c.estadoCobranca && <span className={"estado-badge " + c.estadoCobranca} style={{ marginRight: 6 }}>{ESTADOS_LABEL[c.estadoCobranca] || c.estadoCobranca}</span>}
                     {c.ultima ? c.ultima.content : "—"}
                   </div>
@@ -1267,6 +1274,14 @@ function ConfigLembretes() {
           <div className="field"><label>Dias antes do vencimento pra lembrar</label><input className="input" type="number" min="0" max="10" value={cfg.diasAntesLembrete} onChange={(e) => setCfg({ ...cfg, diasAntesLembrete: Number(e.target.value) })} /></div>
           <div className="field"><label>Dias de carência antes de considerar quebrado</label><input className="input" type="number" min="0" max="15" value={cfg.diasCarencia} onChange={(e) => setCfg({ ...cfg, diasCarencia: Number(e.target.value) })} /></div>
         </div>
+        <div className="agx-sep" />
+        <h4 className="agx-h" style={{ marginBottom: 6 }}>Vigilância de vencimento original (antes de qualquer acordo)</h4>
+        <p className="agx-psub">
+          Cobre quem foi disparado mas nunca fechou acordo — se o vencimento original passar dessa quantidade de dias sem
+          resolução, o sistema escala automaticamente pra um atendente humano revisar (não manda mensagem sozinho aqui,
+          só evita que o caso fique esquecido).
+        </p>
+        <div className="field"><label>Dias após o vencimento original pra escalar</label><input className="input" type="number" min="0" max="30" value={cfg.diasCarenciaContatoInicial} onChange={(e) => setCfg({ ...cfg, diasCarenciaContatoInicial: Number(e.target.value) })} /></div>
         {msg && <p className="agx-psub" style={{ color: msg.startsWith("Erro") ? "var(--coral)" : "var(--mint)" }}>{msg}</p>}
         <button className="btn btn-primary" onClick={salvar} disabled={salvando}>{salvando ? "Salvando..." : "Salvar"}</button>
       </div>

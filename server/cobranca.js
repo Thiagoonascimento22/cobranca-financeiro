@@ -31,9 +31,10 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (typeof c.iaGlobalAtiva !== "boolean") c.iaGlobalAtiva = true;
     if (!c.verifyToken) c.verifyToken = "instructiva_cob_" + Math.random().toString(36).slice(2, 10);
     if (!c.horario) c.horario = horarioPadrao();
-    if (!c.config) c.config = { templateLembrete: "", templateQuebra: "", diasAntesLembrete: 2, diasCarencia: 2 };
+    if (!c.config) c.config = { templateLembrete: "", templateQuebra: "", diasAntesLembrete: 2, diasCarencia: 2, diasCarenciaContatoInicial: 5 };
     if (c.config.diasAntesLembrete === undefined) c.config.diasAntesLembrete = 2;
     if (c.config.diasCarencia === undefined) c.config.diasCarencia = 2;
+    if (c.config.diasCarenciaContatoInicial === undefined) c.config.diasCarenciaContatoInicial = 5;
   }
   function salvar() { saveDB(); }
 
@@ -452,6 +453,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (b.templateQuebra !== undefined) c.templateQuebra = lim(b.templateQuebra, 200);
     if (b.diasAntesLembrete !== undefined) c.diasAntesLembrete = Math.max(0, Math.min(10, Number(b.diasAntesLembrete) || 2));
     if (b.diasCarencia !== undefined) c.diasCarencia = Math.max(0, Math.min(15, Number(b.diasCarencia) || 2));
+    if (b.diasCarenciaContatoInicial !== undefined) c.diasCarenciaContatoInicial = Math.max(0, Math.min(30, Number(b.diasCarenciaContatoInicial) || 5));
     salvar();
     res.json(c);
   });
@@ -1100,6 +1102,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
         atendenteNome: at ? at.nome : "", numeroOficialId: c.numeroOficialId,
         comIA: !!(c.iaId && !c.iaPausada), iaPassou: !!(c.iaId && c.iaPausada && c.atendenteId),
         divida: c.divida || null, estadoCobranca: c.estadoCobranca || null, acordoProposto: c.acordoProposto || null,
+        vencimentoEstourado: !!c.vencimentoEstourado,
         ultima: ultima ? { role: ultima.role, content: String(ultima.content || "").slice(0, 80), ts: ultima.ts } : null,
       };
     });
@@ -1279,6 +1282,32 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
         }
       }
     }
+
+    // ---- camada 2: dívida ORIGINAL (antes de qualquer acordo) que passou do vencimento sem
+    // resolução — sem isso, quem nunca respondeu (ou ficou no meio da conversa) fica invisível
+    // pra sempre, sem ninguém saber que o prazo estourou. Aqui a gente não manda mensagem
+    // automática (não temos template certo pra cada estágio), só ESCALA pra um humano decidir.
+    const ESTADOS_JA_RESOLVIDOS = ["acordo_fechado", "pago", "perdido"];
+    for (const chat of Object.values(db.waChats)) {
+      if (!chat || chat.canal !== "oficial") continue;
+      if (!chat.divida || !chat.divida.vencimento) continue;
+      if (ESTADOS_JA_RESOLVIDOS.includes(chat.estadoCobranca)) continue;
+      if (chat.vencimentoEstourado) continue; // só escala uma vez, não fica repetindo
+      const diasAtraso = diasDeAtraso(chat.divida.vencimento);
+      const carencia = cfg.diasCarenciaContatoInicial !== undefined ? cfg.diasCarenciaContatoInicial : 5;
+      if (diasAtraso !== null && diasAtraso > carencia) {
+        chat.vencimentoEstourado = true;
+        atribuirAtendente(chat);
+        chat.naoLidas = (chat.naoLidas || 0) + 1;
+        chat.atualizadoEm = Date.now();
+        if (!Array.isArray(chat.notas)) chat.notas = [];
+        const situacao = chat.estadoCobranca === "nao_contatado" ? "nunca respondeu ao disparo"
+          : chat.estadoCobranca === "negociando" ? "estava negociando mas não fechou"
+          : "não avançou na conversa";
+        chat.notas.push({ tipo: "vencimento_estourado", texto: `O vencimento original (${fmtDataBR(chat.divida.vencimento)}) passou há ${diasAtraso} dias e o aluno ${situacao} — atendimento escalado pra revisão humana`, ts: Date.now(), por: "Automação" });
+        salvar();
+      }
+    }
   }
 
   /* ============================================================
@@ -1411,11 +1440,12 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     const taxaConversao = Math.round(((porEstado.acordo_fechado + porEstado.pago) / totalComDivida) * 100);
     const respondendoIA = chats.filter((c) => c.iaId && !c.iaPausada).length;
     const aguardandoHumano = chats.filter((c) => c.atendenteId && c.iaId && c.iaPausada && !c.encerrado).length;
+    const vencidosSemAcordo = chats.filter((c) => c.vencimentoEstourado).length;
     res.json({
       totalPendente, totalOriginal, totalRecuperado, porEstado,
       totalContatos: comDivida.length, acordosAtivos, acordosQuebrados,
       parcelasPendentes, parcelasAtrasadas, taxaConversao,
-      respondendoIA, aguardandoHumano,
+      respondendoIA, aguardandoHumano, vencidosSemAcordo,
       conversasAtivas: chats.filter((c) => !c.encerrado).length,
     });
   });
