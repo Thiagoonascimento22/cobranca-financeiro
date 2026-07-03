@@ -1556,6 +1556,20 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (!db.cobranca.voz.webhookToken) { db.cobranca.voz.webhookToken = "el_" + Math.random().toString(36).slice(2, 12); salvar(); }
     res.json(vozPublica(db.cobranca.voz));
   });
+  /* lista as vozes que já estão salvas na conta da ElevenLabs (Minhas Vozes),
+     pra escolher num menu em vez de copiar/colar Voice ID na mão */
+  app.get("/api/cobranca/eleven-vozes", auth, gerenteOnly, async (req, res) => {
+    garantirEstrutura();
+    const v = db.cobranca.voz || {};
+    if (!v.elevenApiKey) return res.status(400).json({ error: "Configure a API Key da ElevenLabs primeiro" });
+    try {
+      const r = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": v.elevenApiKey } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return res.status(400).json({ error: (data.detail && data.detail.message) || "A ElevenLabs recusou a chave" });
+      const vozes = (data.voices || []).map((x) => ({ id: x.voice_id, nome: x.name, idioma: (x.labels && (x.labels.language || x.labels.accent)) || "" }));
+      res.json({ vozes });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
   app.put("/api/cobranca/voz-config", auth, gerenteOnly, (req, res) => {
     garantirEstrutura();
     if (!db.cobranca.voz) db.cobranca.voz = {};

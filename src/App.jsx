@@ -1668,123 +1668,158 @@ function TemplatesScreen() {
   );
 }
 
-function LigacoesScreen() {
-  const [v, setV] = useState(null);
-  const [form, setForm] = useState({ twilioAccountSid: "", twilioAuthToken: "", twilioNumero: "", elevenApiKey: "", elevenAgentId: "", elevenPhoneNumberId: "", companyName: "", agentName: "", descontoMaxPct: 0, origemDebitoPadrao: "", ttsVoiceId: "", ttsEstabilidade: 0.35, ttsSimilaridade: 0.85, ttsEstilo: 0.4 });
+function ConfigLigacaoModal({ v, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    twilioAccountSid: v.twilioAccountSid || "", twilioAuthToken: "", twilioNumero: v.twilioNumero || "",
+    elevenApiKey: "", elevenAgentId: v.elevenAgentId || "", elevenPhoneNumberId: v.elevenPhoneNumberId || "",
+    companyName: v.companyName || "", agentName: v.agentName || "", descontoMaxPct: v.descontoMaxPct || 0,
+    origemDebitoPadrao: v.origemDebitoPadrao || "", ttsVoiceId: v.ttsVoiceId || "",
+    ttsEstabilidade: v.ttsEstabilidade, ttsSimilaridade: v.ttsSimilaridade, ttsEstilo: v.ttsEstilo,
+  });
+  const [aba, setAba] = useState("voz");
+  const [vozes, setVozes] = useState([]);
+  const [carregandoVozes, setCarregandoVozes] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
-  async function carregar() {
-    try {
-      const r = await api.vozConfig();
-      setV(r);
-      setForm((f) => ({ ...f, twilioAccountSid: r.twilioAccountSid, twilioNumero: r.twilioNumero, elevenAgentId: r.elevenAgentId, elevenPhoneNumberId: r.elevenPhoneNumberId, companyName: r.companyName, agentName: r.agentName, descontoMaxPct: r.descontoMaxPct, origemDebitoPadrao: r.origemDebitoPadrao, ttsVoiceId: r.ttsVoiceId, ttsEstabilidade: r.ttsEstabilidade, ttsSimilaridade: r.ttsSimilaridade, ttsEstilo: r.ttsEstilo }));
-    } catch (_) {}
+  async function buscarVozes() {
+    setCarregandoVozes(true); setMsg("");
+    try { const r = await api.elevenVozes(); setVozes(r.vozes || []); } catch (e) { setMsg("Erro: " + e.message); } finally { setCarregandoVozes(false); }
   }
+  useEffect(() => { if (v.temElevenKey) buscarVozes(); }, []);
+
+  async function salvar() {
+    setSalvando(true); setMsg("");
+    try { await api.setVozConfig(form); onSaved(); } catch (e) { setMsg("Erro: " + e.message); } finally { setSalvando(false); }
+  }
+
+  const ABAS = [
+    { k: "voz", lb: "Voz da IA" },
+    { k: "agente", lb: "Agente de ligação" },
+    { k: "twilio", lb: "Twilio" },
+  ];
+
+  return (
+    <Modal titulo="Configurar Ligações e Voz" subtitulo="ElevenLabs + Twilio" onClose={onClose} largura={620}>
+      <div className="tabs" style={{ marginBottom: 16 }}>
+        {ABAS.map((a) => <button key={a.k} className={aba === a.k ? "on" : ""} onClick={() => setAba(a.k)}>{a.lb}</button>)}
+      </div>
+
+      <div className="field"><label>API Key da ElevenLabs {v.temElevenKey && <span className="cob-pill on" style={{ marginLeft: 6 }}>já salva</span>}</label>
+        <input className="input" type="password" value={form.elevenApiKey} onChange={(e) => setForm({ ...form, elevenApiKey: e.target.value })} placeholder={v.temElevenKey ? "•••••••• (deixe em branco pra manter)" : "cole sua chave aqui"} />
+      </div>
+
+      {aba === "voz" && (
+        <div>
+          <div className="field">
+            <label>Voz das respostas em áudio</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <select className="select" style={{ flex: 1 }} value={form.ttsVoiceId} onChange={(e) => setForm({ ...form, ttsVoiceId: e.target.value })}>
+                <option value="">Voz padrão da ElevenLabs</option>
+                {vozes.map((vo) => <option key={vo.id} value={vo.id}>{vo.nome}{vo.idioma ? ` (${vo.idioma})` : ""}</option>)}
+              </select>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={buscarVozes} disabled={carregandoVozes}>{carregandoVozes ? "..." : "Atualizar"}</button>
+            </div>
+            <p className="agx-psub" style={{ marginTop: 6 }}>Puxa direto da sua conta ElevenLabs ("Minhas Vozes") — se não aparecer a que você quer, salva a API Key primeiro e clica em "Atualizar".</p>
+          </div>
+          <div className="field">
+            <label>Estabilidade ({(form.ttsEstabilidade ?? 0.35).toFixed(2)}) — mais baixo = mais expressiva</label>
+            <input type="range" min="0" max="1" step="0.05" value={form.ttsEstabilidade ?? 0.35} onChange={(e) => setForm({ ...form, ttsEstabilidade: Number(e.target.value) })} style={{ width: "100%" }} />
+          </div>
+          <div className="field">
+            <label>Fidelidade à voz ({(form.ttsSimilaridade ?? 0.85).toFixed(2)})</label>
+            <input type="range" min="0" max="1" step="0.05" value={form.ttsSimilaridade ?? 0.85} onChange={(e) => setForm({ ...form, ttsSimilaridade: Number(e.target.value) })} style={{ width: "100%" }} />
+          </div>
+          <div className="field">
+            <label>Expressividade ({(form.ttsEstilo ?? 0.4).toFixed(2)})</label>
+            <input type="range" min="0" max="1" step="0.05" value={form.ttsEstilo ?? 0.4} onChange={(e) => setForm({ ...form, ttsEstilo: Number(e.target.value) })} style={{ width: "100%" }} />
+          </div>
+        </div>
+      )}
+
+      {aba === "agente" && (
+        <div>
+          <div className="row2">
+            <div className="field"><label>Agent ID</label><input className="input" value={form.elevenAgentId} onChange={(e) => setForm({ ...form, elevenAgentId: e.target.value })} placeholder="agent_01..." /></div>
+            <div className="field"><label>Phone Number ID</label><input className="input" value={form.elevenPhoneNumberId} onChange={(e) => setForm({ ...form, elevenPhoneNumberId: e.target.value })} /></div>
+          </div>
+          <div className="row2">
+            <div className="field"><label>Nome da empresa ({"{{company_name}}"})</label><input className="input" value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} placeholder="Escola Instructiva" /></div>
+            <div className="field"><label>Nome do agente ({"{{agent_name}}"})</label><input className="input" value={form.agentName} onChange={(e) => setForm({ ...form, agentName: e.target.value })} placeholder="Ana" /></div>
+          </div>
+          <div className="row2">
+            <div className="field"><label>Desconto máximo % ({"{{desconto_pct}}"})</label><input className="input" type="number" min="0" max="100" value={form.descontoMaxPct} onChange={(e) => setForm({ ...form, descontoMaxPct: Number(e.target.value) })} /></div>
+            <div className="field"><label>Origem do débito ({"{{origem_debito}}"})</label><input className="input" value={form.origemDebitoPadrao} onChange={(e) => setForm({ ...form, origemDebitoPadrao: e.target.value })} placeholder="Mensalidade em atraso" /></div>
+          </div>
+          <p className="agx-psub">URL do webhook de pós-ligação (cola em ElevenLabs → Settings → Webhooks → Post-call):</p>
+          <input className="input" readOnly value={typeof window !== "undefined" ? `${window.location.origin}/api/cobranca/webhook-elevenlabs/${v.webhookToken}` : ""} onClick={(e) => e.target.select()} />
+        </div>
+      )}
+
+      {aba === "twilio" && (
+        <div>
+          <p className="agx-psub">Só referência — quem discute de verdade com o Twilio é a ElevenLabs (importado no painel dela).</p>
+          <div className="row2">
+            <div className="field"><label>Account SID</label><input className="input" value={form.twilioAccountSid} onChange={(e) => setForm({ ...form, twilioAccountSid: e.target.value })} /></div>
+            <div className="field"><label>Número Twilio</label><input className="input" value={form.twilioNumero} onChange={(e) => setForm({ ...form, twilioNumero: e.target.value })} /></div>
+          </div>
+          <div className="field"><label>Auth Token {v.temTwilioToken && <span className="cob-pill on" style={{ marginLeft: 6 }}>já salvo</span>}</label><input className="input" type="password" value={form.twilioAuthToken} onChange={(e) => setForm({ ...form, twilioAuthToken: e.target.value })} /></div>
+        </div>
+      )}
+
+      {msg && <p className="agx-psub" style={{ color: "var(--coral)" }}>{msg}</p>}
+      <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Fechar</button>
+        <button className="btn btn-primary" style={{ flex: 1 }} onClick={salvar} disabled={salvando}>{salvando ? "Salvando..." : "Salvar"}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function LigacoesScreen() {
+  const [v, setV] = useState(null);
+  const [modalAberto, setModalAberto] = useState(false);
+
+  async function carregar() { try { setV(await api.vozConfig()); } catch (_) {} }
   useEffect(() => { carregar(); }, []);
 
-  async function salvar(e) {
-    e.preventDefault();
-    setSalvando(true); setMsg("");
-    try {
-      await api.setVozConfig(form);
-      setMsg("Salvo.");
-      carregar();
-    } catch (e) { setMsg("Erro: " + e.message); } finally { setSalvando(false); }
-  }
-
-  const urlWebhookEl = typeof window !== "undefined" && v ? `${window.location.origin}/api/cobranca/webhook-elevenlabs/${v.webhookToken}` : "";
+  if (!v) return null;
+  const vozEscolhida = v.ttsVoiceId ? "personalizada" : "padrão";
 
   return (
     <div className="content">
       <div className="page-head">
-        <div><h2>Ligações</h2><p>IA de voz via ElevenLabs, usando seu número Twilio — pra quando o WhatsApp não é suficiente.</p></div>
+        <div><h2>Ligações</h2><p>IA de voz via ElevenLabs, usando seu número Twilio.</p></div>
+        <button className="btn btn-primary" onClick={() => setModalAberto(true)}><I.cog style={{ width: 15, height: 15 }} /> Configurar</button>
+      </div>
+
+      <div className="dash-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+        <div className="cob-card" style={{ marginBottom: 0, padding: 18 }}>
+          <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>ElevenLabs</div>
+          <span className={"cob-pill " + (v.temElevenKey ? "on" : "off")}>{v.temElevenKey ? "conectado" : "não configurado"}</span>
+        </div>
+        <div className="cob-card" style={{ marginBottom: 0, padding: 18 }}>
+          <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>Agente de ligação</div>
+          <span className={"cob-pill " + (v.elevenAgentId ? "on" : "off")}>{v.elevenAgentId ? "configurado" : "faltando"}</span>
+        </div>
+        <div className="cob-card" style={{ marginBottom: 0, padding: 18 }}>
+          <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>Voz das respostas</div>
+          <span className="cob-pill on">{vozEscolhida}</span>
+        </div>
       </div>
 
       <div className="cob-card">
         <div className="cob-card-h"><h3>Como funciona</h3></div>
         <div className="cob-card-body">
           <p className="agx-psub" style={{ margin: 0 }}>
-            A ElevenLabs cuida de toda a parte de telefonia/áudio em tempo real — a gente só manda o pedido pra discar
-            (com o nome, valor e vencimento do aluno) e recebe de volta o resumo da ligação, que aparece na mesma
-            conversa do WhatsApp. Não precisa construir nenhuma infraestrutura de telefonia própria.
+            A ElevenLabs cuida de toda a telefonia/áudio em tempo real. Pra ligar, ela precisa do seu número Twilio
+            importado no painel dela (Agents → Phone Numbers) e vinculado a um agente — isso é feito lá, não aqui.
+            Depois de importado, clica em "Configurar" acima pra colar o Agent ID e o Phone Number ID.
           </p>
         </div>
       </div>
 
-      <div className="cob-card">
-        <div className="cob-card-h"><h3>Passo 1 — Importar seu número Twilio na ElevenLabs</h3></div>
-        <div className="cob-card-body">
-          <p className="agx-psub">
-            No painel da ElevenLabs (elevenlabs.io → Agents → Phone Numbers), importa seu número Twilio informando o
-            Account SID e o Auth Token dele. Depois de importado, cria (ou usa) um Agente de voz e vincula esse número
-            a ele. A ElevenLabs te dá um <strong>Phone Number ID</strong> — é esse valor que vai no campo abaixo.
-          </p>
-        </div>
-      </div>
-
-      <div className="cob-card">
-        <div className="cob-card-h"><h3>Passo 2 — Credenciais</h3></div>
-        <div className="cob-card-body">
-          <form onSubmit={salvar}>
-            <h4 className="agx-h" style={{ marginBottom: 12 }}>ElevenLabs (obrigatório pra ligar)</h4>
-            <div className="field"><label>API Key {v && v.temElevenKey && <span className="cob-pill on" style={{ marginLeft: 6 }}>já salva</span>}</label><input className="input" type="password" value={form.elevenApiKey} onChange={(e) => setForm({ ...form, elevenApiKey: e.target.value })} placeholder={v && v.temElevenKey ? "•••••••• (deixe em branco pra manter)" : ""} /></div>
-            <div className="row2">
-              <div className="field"><label>Agent ID</label><input className="input" value={form.elevenAgentId} onChange={(e) => setForm({ ...form, elevenAgentId: e.target.value })} placeholder="agent_01..." /></div>
-              <div className="field"><label>Phone Number ID</label><input className="input" value={form.elevenPhoneNumberId} onChange={(e) => setForm({ ...form, elevenPhoneNumberId: e.target.value })} placeholder="do passo 1" /></div>
-            </div>
-
-            <div className="agx-sep" />
-            <h4 className="agx-h" style={{ marginBottom: 6 }}>Variáveis que o agente usa</h4>
-            <p className="agx-psub">Precisa bater com o que o prompt do seu agente espera (`{"{{company_name}}"}`, `{"{{agent_name}}"}` etc).</p>
-            <div className="row2">
-              <div className="field"><label>Nome da empresa ({"{{company_name}}"})</label><input className="input" value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} placeholder="Escola Instructiva" /></div>
-              <div className="field"><label>Nome do agente ({"{{agent_name}}"})</label><input className="input" value={form.agentName} onChange={(e) => setForm({ ...form, agentName: e.target.value })} placeholder="Ana" /></div>
-            </div>
-            <div className="row2">
-              <div className="field"><label>Desconto máximo à vista % ({"{{desconto_pct}}"})</label><input className="input" type="number" min="0" max="100" value={form.descontoMaxPct} onChange={(e) => setForm({ ...form, descontoMaxPct: Number(e.target.value) })} /></div>
-              <div className="field"><label>Origem do débito padrão ({"{{origem_debito}}"})</label><input className="input" value={form.origemDebitoPadrao} onChange={(e) => setForm({ ...form, origemDebitoPadrao: e.target.value })} placeholder="Mensalidade em atraso" /></div>
-            </div>
-            <div className="field"><label>Voz pra respostas em áudio no WhatsApp (Voice ID da ElevenLabs)</label><input className="input" value={form.ttsVoiceId} onChange={(e) => setForm({ ...form, ttsVoiceId: e.target.value })} placeholder="deixe em branco pra usar a voz padrão" /></div>
-
-            <div className="field">
-              <label>Estabilidade ({form.ttsEstabilidade.toFixed(2)}) — mais baixo = mais expressiva/natural, mais alto = mais uniforme (mas pode soar robótica)</label>
-              <input type="range" min="0" max="1" step="0.05" value={form.ttsEstabilidade} onChange={(e) => setForm({ ...form, ttsEstabilidade: Number(e.target.value) })} style={{ width: "100%" }} />
-            </div>
-            <div className="field">
-              <label>Fidelidade à voz original ({form.ttsSimilaridade.toFixed(2)}) — mais alto mantém o timbre mais fiel</label>
-              <input type="range" min="0" max="1" step="0.05" value={form.ttsSimilaridade} onChange={(e) => setForm({ ...form, ttsSimilaridade: Number(e.target.value) })} style={{ width: "100%" }} />
-            </div>
-            <div className="field">
-              <label>Expressividade ({form.ttsEstilo.toFixed(2)}) — mais alto = mais entonação/emoção na fala</label>
-              <input type="range" min="0" max="1" step="0.05" value={form.ttsEstilo} onChange={(e) => setForm({ ...form, ttsEstilo: Number(e.target.value) })} style={{ width: "100%" }} />
-            </div>
-            <p className="agx-psub">Já deixei ajustado num ponto que costuma soar mais natural (menos "robô"). Se quiser mexer, testa uma resposta de áudio depois de salvar pra ouvir a diferença.</p>
-
-            <div className="agx-sep" />
-            <h4 className="agx-h" style={{ marginBottom: 12 }}>Twilio (só referência — quem usa é a ElevenLabs)</h4>
-            <div className="row2">
-              <div className="field"><label>Account SID</label><input className="input" value={form.twilioAccountSid} onChange={(e) => setForm({ ...form, twilioAccountSid: e.target.value })} placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" /></div>
-              <div className="field"><label>Número Twilio</label><input className="input" value={form.twilioNumero} onChange={(e) => setForm({ ...form, twilioNumero: e.target.value })} placeholder="+55 44 9xxxx-xxxx" /></div>
-            </div>
-            <div className="field"><label>Auth Token {v && v.temTwilioToken && <span className="cob-pill on" style={{ marginLeft: 6 }}>já salvo</span>}</label><input className="input" type="password" value={form.twilioAuthToken} onChange={(e) => setForm({ ...form, twilioAuthToken: e.target.value })} placeholder={v && v.temTwilioToken ? "•••••••• (deixe em branco pra manter)" : ""} /></div>
-
-            {msg && <div className="agx-psub" style={{ color: msg.startsWith("Erro") ? "var(--coral)" : "var(--mint)" }}>{msg}</div>}
-            <button className="btn btn-primary" disabled={salvando}>{salvando ? "Salvando..." : "Salvar"}</button>
-          </form>
-        </div>
-      </div>
-
-      <div className="cob-card">
-        <div className="cob-card-h"><h3>Passo 3 — Webhook de pós-ligação (opcional, mas recomendado)</h3></div>
-        <div className="cob-card-body">
-          <p className="agx-psub">
-            Configura essa URL no painel da ElevenLabs em <strong>Settings → Webhooks → Post-call</strong>, pra que o
-            resumo de cada ligação apareça automaticamente na conversa do WhatsApp do aluno.
-          </p>
-          <div className="field"><label>URL do webhook</label><input className="input" readOnly value={urlWebhookEl} onClick={(e) => e.target.select()} /></div>
-        </div>
-      </div>
+      {modalAberto && <ConfigLigacaoModal v={v} onClose={() => setModalAberto(false)} onSaved={() => { setModalAberto(false); carregar(); }} />}
     </div>
   );
 }
