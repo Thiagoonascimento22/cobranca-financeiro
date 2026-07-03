@@ -357,7 +357,7 @@ function Conversas() {
                 <div className="av">{(chat.nome || "?").slice(0, 1).toUpperCase()}</div>
                 <div>
                   <div className="nm">{chat.nome}</div>
-                  <div className="num">{chat.numero}{chat.divida && chat.divida.vencimento ? ` · venc. ${chat.divida.vencimento}` : ""}</div>
+                  <div className="num">{chat.numero}{chat.divida && chat.divida.vencimento ? ` · venc. ${chat.divida.vencimento}` : ""}{chat.divida && chat.divida.curso ? ` · ${chat.divida.curso}` : ""}</div>
                 </div>
                 <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                   <button className="btn btn-sm btn-ghost" disabled={ligando} onClick={ligar} title="Ligar por voz (IA)"><I.phone style={{ width: 14, height: 14 }} /> {ligando ? "Ligando..." : "Ligar"}</button>
@@ -605,7 +605,7 @@ function IABuilder({ ia, papelInicial, iasNegociadoras, onClose, onSaved }) {
 
   const [testeHist, setTesteHist] = useState([]);
   const [testeMsg, setTesteMsg] = useState("");
-  const [testeDivida, setTesteDivida] = useState({ valor: "890", vencimento: "2026-06-10", codigoAluno: "AL-1234" });
+  const [testeDivida, setTesteDivida] = useState({ valor: "890", vencimento: "2026-06-10", curso: "Técnico em Eletrônica" });
   const [testando, setTestando] = useState(false);
   const testeRef = useRef(null);
 
@@ -986,7 +986,7 @@ function DisparoScreen() {
   const [erro, setErro] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [modo, setModo] = useState("csv");
-  const [manual, setManual] = useState({ nome: "", telefone: "", valor: "", vencimento: "", codigoAluno: "" });
+  const [manual, setManual] = useState({ nome: "", telefone: "", valor: "", vencimento: "", curso: "" });
   const [campanhaAberta, setCampanhaAberta] = useState(null);
   const [csvBruto, setCsvBruto] = useState(null); // { header, linhas } — guardado pra poder refiltrar sem re-upload
   const [filtroVenc, setFiltroVenc] = useState("todos"); // todos | vencendo | vencidos
@@ -1038,7 +1038,7 @@ function DisparoScreen() {
     const idxTel = header.findIndex((h) => h.includes("telefone") || h.includes("celular") || h.includes("whats"));
     const idxValor = header.findIndex((h) => h.includes("valor"));
     const idxVenc = header.findIndex((h) => h.includes("vencimento") || h.includes("venc"));
-    const idxCod = header.findIndex((h) => h.includes("codigo") || h.includes("matricula"));
+    const idxCurso = header.findIndex((h) => h.includes("curso"));
     const idxCpf = header.findIndex((h) => h.includes("cpf"));
     const idxEmail = header.findIndex((h) => h.includes("email") || h.includes("e-mail"));
     if (idxTel < 0) { setErro("Não achei a coluna de telefone no CSV. Cabeçalho encontrado: " + header.join(", ")); return null; }
@@ -1059,7 +1059,7 @@ function DisparoScreen() {
         divida: {
           valor: idxValor >= 0 ? l[idxValor].replace(",", ".") : "",
           vencimento: idxVenc >= 0 ? paraDataISO(l[idxVenc]) : "",
-          codigoAluno: idxCod >= 0 ? l[idxCod] : "",
+          curso: idxCurso >= 0 ? l[idxCurso] : "",
           cpf: idxCpf >= 0 ? l[idxCpf] : "",
           email: idxEmail >= 0 ? l[idxEmail] : "",
         },
@@ -1102,8 +1102,8 @@ function DisparoScreen() {
     if (!manual.telefone.trim()) { setErro("Informe o telefone"); return; }
     const variaveis = [];
     for (let n = 0; n < nVars; n++) variaveis.push(manual["var" + n] || (n === 0 ? manual.nome : ""));
-    setContatos([...contatos, { nome: manual.nome, telefone: manual.telefone, variaveis, divida: { valor: manual.valor, vencimento: manual.vencimento, codigoAluno: manual.codigoAluno } }]);
-    setManual({ nome: "", telefone: "", valor: "", vencimento: "", codigoAluno: "" });
+    setContatos([...contatos, { nome: manual.nome, telefone: manual.telefone, variaveis, divida: { valor: manual.valor, vencimento: manual.vencimento, curso: manual.curso } }]);
+    setManual({ nome: "", telefone: "", valor: "", vencimento: "", curso: "" });
     setErro("");
   }
   function removerContato(i) { setContatos(contatos.filter((_, idx) => idx !== i)); }
@@ -1196,7 +1196,7 @@ function DisparoScreen() {
                 <input id="csv-input" ref={fileRef} type="file" accept=".csv,text/csv" onChange={onArquivo} />
                 <I.upload className="ic" />
                 <div className="t">{arquivoNome || "Clique para escolher o arquivo CSV"}</div>
-                <div className="s">colunas: nome, telefone, valor, vencimento, código do aluno{nVars > 0 ? ", variavel1..." + nVars : ""}</div>
+                <div className="s">colunas: nome, telefone, valor, vencimento, curso{nVars > 0 ? ", variavel1..." + nVars : ""}</div>
                 <div className="s">vencimento aceita 12/07/2026 ou 2026-07-12 — os dois formatos funcionam</div>
                 <div className="s">opcionais: cpf, email</div>
               </label>
@@ -1216,7 +1216,7 @@ function DisparoScreen() {
                 <div className="field"><label>Valor</label><input className="input" value={manual.valor} onChange={(e) => setManual({ ...manual, valor: e.target.value })} placeholder="350.00" /></div>
                 <div className="field"><label>Vencimento</label><input className="input" type="date" value={manual.vencimento} onChange={(e) => setManual({ ...manual, vencimento: e.target.value })} /></div>
               </div>
-              <div className="field"><label>Código do aluno</label><input className="input" value={manual.codigoAluno} onChange={(e) => setManual({ ...manual, codigoAluno: e.target.value })} /></div>
+              <div className="field"><label>Curso</label><input className="input" value={manual.curso} onChange={(e) => setManual({ ...manual, curso: e.target.value })} placeholder="Ex: Técnico em Eletrônica" /></div>
               {nVars > 0 && Array.from({ length: nVars }).map((_, n) => (
                 <div className="field" key={n}><label>Variável {"{{" + (n + 1) + "}}"}{n === 0 ? " (padrão: nome)" : ""}</label>
                   <input className="input" value={manual["var" + n] || ""} onChange={(e) => setManual({ ...manual, ["var" + n]: e.target.value })} placeholder={n === 0 ? manual.nome || "usa o nome se deixar em branco" : ""} />
@@ -1229,13 +1229,14 @@ function DisparoScreen() {
           {contatos.length > 0 && (
             <div className="contatos-preview">
               <table>
-                <thead><tr><th>Nome</th><th>Telefone</th><th>Valor</th><th>Vencimento</th><th>CPF</th><th>E-mail</th>{nVars > 0 && <th>Variáveis</th>}<th></th></tr></thead>
+                <thead><tr><th>Nome</th><th>Telefone</th><th>Valor</th><th>Vencimento</th><th>Curso</th><th>CPF</th><th>E-mail</th>{nVars > 0 && <th>Variáveis</th>}<th></th></tr></thead>
                 <tbody>
                   {contatos.map((c, i) => (
                     <tr key={i}>
                       <td>{c.nome || "—"}</td><td>{c.telefone}</td>
                       <td>{c.divida?.valor ? fmtMoeda(c.divida.valor) : "—"}</td>
                       <td>{c.divida?.vencimento || "—"}</td>
+                      <td>{c.divida?.curso || "—"}</td>
                       <td>{c.divida?.cpf || "—"}</td>
                       <td>{c.divida?.email || "—"}</td>
                       {nVars > 0 && <td>{(c.variaveis || []).join(" · ") || "—"}</td>}

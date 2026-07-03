@@ -520,8 +520,8 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       if (divida.valor) linhas.push(`Valor em aberto: ${fmtMoedaBR(divida.valor)}`);
       if (divida.vencimento) linhas.push(`Vencimento original: ${fmtDataBR(divida.vencimento)}`);
       if (atraso !== null) linhas.push(`Dias de atraso até hoje: ${atraso >= 0 ? atraso : 0}${atraso < 0 ? " (ainda não venceu, é um lembrete preventivo)" : ""}`);
-      if (divida.codigoAluno) linhas.push(`Código do aluno no sistema: ${divida.codigoAluno}`);
-      P.push(`\nDADOS DESTA COBRANÇA (use exatamente esses números, nunca invente ou arredonde):\n- ${linhas.join("\n- ")}`);
+      if (divida.curso) linhas.push(`Curso do aluno: ${divida.curso}`);
+      P.push(`\nDADOS DESTA COBRANÇA (use exatamente essas informações, nunca invente ou arredonde — inclusive se o aluno perguntar "qual curso mesmo?", responda com o nome exato daqui):\n- ${linhas.join("\n- ")}`);
     } else {
       P.push(`\nATENÇÃO: não há dados de dívida carregados pra esse contato. NÃO invente valor, vencimento ou qualquer dado financeiro.`);
     }
@@ -937,7 +937,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     const out = {};
     if (d.valor !== undefined && d.valor !== "") out.valor = Number(d.valor) || 0;
     if (d.vencimento) out.vencimento = lim(d.vencimento, 10);
-    if (d.codigoAluno) out.codigoAluno = lim(d.codigoAluno, 60);
+    if (d.curso) out.curso = lim(d.curso, 120);
     if (d.cpf) out.cpf = lim(String(d.cpf).replace(/[^\d]/g, ""), 14);
     if (d.email) out.email = lim(String(d.email).trim(), 120);
     return Object.keys(out).length ? out : null;
