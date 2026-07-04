@@ -575,6 +575,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     P.push(`- NUNCA use tom de ameaça, constrangimento ou pressão abusiva. Não use "negativação", "protesto" ou "ação judicial" como ameaça.`);
     P.push(`- NUNCA confirme ou negue dívida pra alguém que não comprovou ser o titular.`);
     P.push(`\nÁUDIO OU TEXTO: por padrão você responde em texto. Se o aluno pedir explicitamente pra você responder por áudio/voz (de qualquer jeito que ele formular isso), inclua a tag [MODO_AUDIO] no final da sua resposta. Se o aluno pedir pra você parar de mandar áudio e voltar a escrever (de qualquer jeito que ele formular isso — "não consigo ouvir", "manda por texto", "sem áudio", etc.), inclua a tag [MODO_TEXTO] no final. Essas tags nunca aparecem pro aluno.`);
+    P.push(`\nMENSAGENS SEPARADAS: pessoas de verdade no WhatsApp mandam vários balões curtos, não um texto único. Se sua resposta tiver mais de uma ideia (ex.: uma confirmação + uma pergunta, ou uma explicação + uma proposta), separe cada balão com uma linha em branco entre eles — cada bloco separado por linha em branco vira uma mensagem própria. Não abuse: no máximo 2-3 balões por resposta, cada um curto.`);
     return P.join("\n");
   }
 
@@ -758,6 +759,29 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       await graphPost(numeroCfg, { messaging_product: "whatsapp", status: "read", message_id: ultimaMsgId, typing_indicator: { type: "text" } });
     } catch (_) {}
   }
+  // separa a resposta em várias mensagens curtas, do jeito que uma pessoa de verdade
+  // manda no WhatsApp — a IA já separa os "blocos" com linha em branco (instrução no
+  // prompt); aqui só garante que nunca manda um textão só numa bolha.
+  function dividirEmMensagens(texto) {
+    let blocos = texto.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+    if (blocos.length <= 1) {
+      // a IA não separou — tenta quebrar por frase se o texto for longo (>220 caracteres)
+      const unico = blocos[0] || texto.trim();
+      if (unico.length > 220) {
+        const frases = unico.match(/[^.!?]+[.!?]+(\s|$)/g) || [unico];
+        blocos = [];
+        let atual = "";
+        for (const f of frases) {
+          if ((atual + f).length > 160 && atual) { blocos.push(atual.trim()); atual = ""; }
+          atual += f;
+        }
+        if (atual.trim()) blocos.push(atual.trim());
+      } else {
+        blocos = [unico];
+      }
+    }
+    return blocos.slice(0, 5); // limite de segurança, nunca manda mais que 5 mensagens de uma vez
+  }
 
   const SINAIS_ESCALONAMENTO = [
     "já paguei", "ja paguei", "não devo", "nao devo", "não reconheço", "nao reconheco",
@@ -867,10 +891,18 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
           }
         }
         if (!enviouAudio) {
-          await enviarTextoOficial(numeroCfg, chat.numero, resposta);
-          const ts = Date.now();
-          chat.mensagens.push({ role: "me", content: resposta, ts, porIA: true });
-          chat.atualizadoEm = ts;
+          const blocos = dividirEmMensagens(resposta);
+          for (let i = 0; i < blocos.length; i++) {
+            if (i > 0) {
+              // pausa curta entre uma mensagem e outra, como alguém digitando de novo
+              await mostrarDigitando(numeroCfg, chat.ultimaMsgLeadId);
+              await new Promise((r) => setTimeout(r, 1200 + Math.random() * 1200));
+            }
+            await enviarTextoOficial(numeroCfg, chat.numero, blocos[i]);
+            const ts = Date.now();
+            chat.mensagens.push({ role: "me", content: blocos[i], ts, porIA: true });
+            chat.atualizadoEm = ts;
+          }
         }
         if (chat.mensagens.length > 300) chat.mensagens = chat.mensagens.slice(-300);
       }
