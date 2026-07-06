@@ -249,8 +249,21 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
       "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/amr": "amr", "audio/wav": "wav",
       "video/mp4": "mp4", "video/3gpp": "3gp", "application/pdf": "pdf",
+      "application/msword": "doc",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+      "application/vnd.ms-excel": "xls",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+      "application/vnd.ms-powerpoint": "ppt",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+      "text/plain": "txt", "text/csv": "csv", "application/zip": "zip",
     };
     return map[String(mime || "").toLowerCase().split(";")[0]] || "bin";
+  }
+  // tira a extensão de um nome de arquivo, se tiver uma reconhecível — mais confiável
+  // que adivinhar pelo mimetype, que às vezes vem genérico ou incompleto da Meta
+  function extDoNome(nome) {
+    const m = String(nome || "").match(/\.([a-z0-9]{2,5})$/i);
+    return m ? m[1].toLowerCase() : null;
   }
   async function uploadMidiaMeta(numeroCfg, buffer, mimeType, filename) {
     const form = new FormData();
@@ -272,19 +285,23 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     payload[tipo] = obj;
     return graphPost(numeroCfg, payload);
   }
-  async function baixarMidiaMeta(numeroCfg, mediaId) {
+  async function baixarMidiaMeta(numeroCfg, mediaId, nomeOriginal) {
     if (!MEDIA_DIR || !fs || !path || !mediaId) return null;
     try {
       const r1 = await fetch(`${GRAPH}/${mediaId}`, { headers: { Authorization: "Bearer " + numeroCfg.token } });
-      if (!r1.ok) return null;
+      if (!r1.ok) { console.log("[cobranca] mídia: falha ao pegar metadados", mediaId, r1.status); return null; }
       const meta = await r1.json();
-      if (!meta || !meta.url) return null;
+      if (!meta || !meta.url) { console.log("[cobranca] mídia: metadados sem URL", mediaId); return null; }
       const r2 = await fetch(meta.url, { headers: { Authorization: "Bearer " + numeroCfg.token } });
-      if (!r2.ok) return null;
+      if (!r2.ok) { console.log("[cobranca] mídia: falha ao baixar arquivo", mediaId, r2.status); return null; }
       const buf = Buffer.from(await r2.arrayBuffer());
+      if (buf.length < 50) { console.log("[cobranca] mídia: arquivo baixado vazio/corrompido", mediaId, buf.length, "bytes"); return null; }
       const mime = meta.mime_type || "application/octet-stream";
-      const fname = "of_" + mediaId + "." + extPorMime(mime);
+      // prioriza a extensão do nome original (mais confiável que adivinhar pelo mimetype)
+      const ext = extDoNome(nomeOriginal) || extPorMime(mime);
+      const fname = "of_" + mediaId + "." + ext;
       fs.writeFileSync(path.join(MEDIA_DIR, fname), buf);
+      console.log("[cobranca] mídia baixada com sucesso:", fname, buf.length, "bytes");
       return { arquivo: fname, mimetype: mime, buffer: buf, tamanho: buf.length };
     } catch (e) { console.log("[cobranca] erro ao baixar mídia:", e.message); return null; }
   }
@@ -1512,12 +1529,14 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
             }
             if (mediaIdMeta) {
               try {
-                const baixado = await baixarMidiaMeta(numeroCfg, mediaIdMeta);
+                const baixado = await baixarMidiaMeta(numeroCfg, mediaIdMeta, midiaFilename);
                 if (baixado) {
                   midiaArquivo = baixado.arquivo; midiaMime = baixado.mimetype;
                   if (midiaTipo === "audio") transcricao = await transcreverAudio(baixado.buffer, baixado.mimetype);
+                } else {
+                  console.log("[cobranca] não consegui baixar mídia do webhook — tipo:", midiaTipo, "mediaId:", mediaIdMeta);
                 }
-              } catch (_) {}
+              } catch (e) { console.log("[cobranca] erro no download de mídia do webhook:", e.message); }
             }
             const ts = m.timestamp ? Number(m.timestamp) * 1000 : Date.now();
             const msgObj = { role: "them", content, ts };
