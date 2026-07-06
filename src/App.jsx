@@ -331,6 +331,7 @@ function Conversas() {
   const [busca, setBusca] = useState("");
   const [ias, setIas] = useState([]);
   const [ligando, setLigando] = useState(false);
+  const [exportarAberto, setExportarAberto] = useState(false);
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [gravando, setGravando] = useState(false);
   const [convertendo, setConvertendo] = useState(false);
@@ -466,8 +467,9 @@ function Conversas() {
     <div className="wa-page">
       <div className="wa-grid">
         <div className="wa-list">
-          <div className="wa-list-h">
-            <div className="wa-search"><input placeholder="Buscar nome ou número" value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
+          <div className="wa-list-h" style={{ display: "flex", gap: 8 }}>
+            <div className="wa-search" style={{ flex: 1 }}><input placeholder="Buscar nome ou número" value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
+            <button className="btn btn-sm btn-ghost" onClick={() => setExportarAberto(true)} title="Exportar conversas"><I.doc style={{ width: 15, height: 15 }} /></button>
           </div>
           <div className="wa-list-scroll">
             {lista.length === 0 && <div className="cob-empty">Nenhuma conversa ainda.</div>}
@@ -479,7 +481,7 @@ function Conversas() {
                   <div className="last">
                     {c.vencimentoEstourado && <span className="estado-badge perdido" style={{ marginRight: 6 }}>⚠ vencido s/ acordo</span>}
                     {c.estadoCobranca && <span className={"estado-badge " + c.estadoCobranca} style={{ marginRight: 6 }}>{ESTADOS_LABEL[c.estadoCobranca] || c.estadoCobranca}</span>}
-                    {c.ultima ? c.ultima.content : "—"}
+                    {c.statusResumo || (c.ultima ? c.ultima.content : "—")}
                   </div>
                 </div>
                 {c.naoLidas > 0 && <div className="wa-badge">{c.naoLidas}</div>}
@@ -499,6 +501,7 @@ function Conversas() {
                 <div>
                   <div className="nm">{chat.nome}</div>
                   <div className="num">{chat.numero}{chat.divida && chat.divida.vencimento ? ` · venc. ${chat.divida.vencimento}` : ""}{chat.divida && chat.divida.curso ? ` · ${chat.divida.curso}` : ""}</div>
+                  {chat.statusResumo && <div style={{ fontSize: 12, color: "var(--emerald, var(--brand))", marginTop: 2 }}>📌 {chat.statusResumo}</div>}
                 </div>
                 <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                   <button className="btn btn-sm btn-ghost" disabled={ligando} onClick={ligar} title="Ligar por voz (IA)"><I.phone style={{ width: 14, height: 14 }} /> {ligando ? "Ligando..." : "Ligar"}</button>
@@ -579,7 +582,36 @@ function Conversas() {
           )}
         </div>
       </div>
+      {exportarAberto && <ExportarConversasModal onClose={() => setExportarAberto(false)} />}
     </div>
+  );
+}
+
+function ExportarConversasModal({ onClose }) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const [inicio, setInicio] = useState(hoje);
+  const [fim, setFim] = useState(hoje);
+  const [exportando, setExportando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function exportar() {
+    setExportando(true); setErro("");
+    try { await api.exportarConversas(inicio, fim); onClose(); } catch (e) { setErro(e.message); } finally { setExportando(false); }
+  }
+
+  return (
+    <Modal titulo="Exportar conversas" subtitulo="Baixa um CSV com todas as mensagens do período — dá pra abrir no Excel ou colar num GPT pra analisar." onClose={onClose}>
+      <div className="row2">
+        <div className="field"><label>De</label><input className="input" type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} /></div>
+        <div className="field"><label>Até</label><input className="input" type="date" value={fim} onChange={(e) => setFim(e.target.value)} /></div>
+      </div>
+      <p className="agx-psub">Cada linha do CSV é uma mensagem, com data/hora, telefone, nome, estado do funil, o resumo de status que a IA vai mantendo, quem mandou (aluno/IA/atendente) e o conteúdo.</p>
+      {erro && <div className="err">{erro}</div>}
+      <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
+        <button className="btn btn-primary" style={{ flex: 1 }} onClick={exportar} disabled={exportando}>{exportando ? "Gerando..." : "Baixar CSV"}</button>
+      </div>
+    </Modal>
   );
 }
 

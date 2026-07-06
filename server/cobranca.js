@@ -597,6 +597,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     P.push(`- NUNCA confirme ou negue dívida pra alguém que não comprovou ser o titular.`);
     P.push(`\nÁUDIO OU TEXTO: por padrão você responde em texto. Se o aluno pedir explicitamente pra você responder por áudio/voz (de qualquer jeito que ele formular isso), inclua a tag [MODO_AUDIO] no final da sua resposta. Se o aluno pedir pra você parar de mandar áudio e voltar a escrever (de qualquer jeito que ele formular isso — "não consigo ouvir", "manda por texto", "sem áudio", etc.), inclua a tag [MODO_TEXTO] no final. Essas tags nunca aparecem pro aluno.`);
     P.push(`\nMENSAGENS SEPARADAS: pessoas de verdade no WhatsApp mandam vários balões curtos, não um texto único. Se sua resposta tiver mais de uma ideia (ex.: uma confirmação + uma pergunta, ou uma explicação + uma proposta), separe cada balão com uma linha em branco entre eles — cada bloco separado por linha em branco vira uma mensagem própria. Não abuse: no máximo 2-3 balões por resposta, cada um curto.`);
+    P.push(`\nSTATUS DA CONVERSA: em TODA resposta, no final de tudo (depois de qualquer outra tag), inclua a tag [STATUS: resumo] com um resumo curto (uma frase, máximo ~15 palavras) de onde a conversa está agora — o que já foi combinado, o que falta, ou o que você está esperando do aluno. Exemplos: [STATUS: aluno confirmou identidade, ainda não disse o motivo do atraso], [STATUS: aluno disse que paga até sexta, aguardando comprovante], [STATUS: aluno pediu desconto maior que o permitido, escalado pro humano]. Essa tag nunca aparece pro aluno — é só controle interno.`);
     return P.join("\n");
   }
 
@@ -858,6 +859,12 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       let pedirModoTexto = false, pedirModoAudio = false;
       if (resposta.includes("[MODO_TEXTO]")) { pedirModoTexto = true; resposta = resposta.replace(/\[MODO_TEXTO\]/g, "").trim(); }
       if (resposta.includes("[MODO_AUDIO]")) { pedirModoAudio = true; resposta = resposta.replace(/\[MODO_AUDIO\]/g, "").trim(); }
+      const mStatus = resposta.match(/\[STATUS:\s*([^\]]+)\]/i);
+      if (mStatus) {
+        chat.statusResumo = mStatus[1].trim();
+        chat.statusResumoEm = Date.now();
+        resposta = resposta.replace(mStatus[0], "").trim();
+      }
       const mMotivo = resposta.match(/\[MOTIVO:\s*([^\]]+)\]/i);
       if (mMotivo) { chat.motivoInadimplencia = lim(mMotivo[1], 500); resposta = resposta.replace(/\[MOTIVO:[^\]]+\]/i, "").trim(); }
       const mAcordo = resposta.match(/\[ACORDO_PROPOSTO:\s*parcelas=(\d+);\s*valor_parcela=([\d.,]+);\s*vencimento=(\d{4}-\d{2}-\d{2})\]/i);
@@ -1254,6 +1261,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
         comIA: !!(c.iaId && !c.iaPausada), iaPassou: !!(c.iaId && c.iaPausada && c.atendenteId),
         divida: c.divida || null, estadoCobranca: c.estadoCobranca || null, acordoProposto: c.acordoProposto || null,
         vencimentoEstourado: !!c.vencimentoEstourado,
+        statusResumo: c.statusResumo || null,
         ultima: ultima ? { role: ultima.role, content: String(ultima.content || "").slice(0, 80), ts: ultima.ts } : null,
       };
     });
@@ -1598,6 +1606,31 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
   /* ============================================================
      PAINEL — métricas agregadas pro dashboard
      ============================================================ */
+  /* exporta todas as mensagens de todas as conversas dentro de um período — uma linha por
+     mensagem, pra analisar externamente (Excel, ChatGPT, etc.) ou arquivar */
+  app.get("/api/cobranca/exportar-conversas", auth, gerenteOnly, (req, res) => {
+    garantirEstrutura();
+    const inicio = req.query.inicio ? new Date(req.query.inicio + "T00:00:00-03:00").getTime() : 0;
+    const fim = req.query.fim ? new Date(req.query.fim + "T23:59:59-03:00").getTime() : Date.now();
+    const linhas = [["Data/Hora", "Telefone", "Nome", "Estado", "Status (IA)", "Remetente", "Tipo", "Mensagem"]];
+    for (const chat of Object.values(db.waChats)) {
+      if (!chat || chat.canal !== "oficial") continue;
+      for (const m of chat.mensagens || []) {
+        if (m.ts < inicio || m.ts > fim) continue;
+        const dataHora = new Date(m.ts).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+        const remetente = m.role === "them" ? "Aluno" : m.porIA ? "IA" : "Atendente";
+        const tipo = m.tipo || "texto";
+        const texto = (m.transcricao || m.content || "").replace(/"/g, '""').replace(/\n/g, " ");
+        linhas.push([dataHora, chat.numero, chat.nome || "", chat.estadoCobranca || "", chat.statusResumo || "", remetente, tipo, texto]);
+      }
+    }
+    const csv = linhas.map((l) => l.map((v) => `"${v}"`).join(",")).join("\n");
+    const nomeArquivo = `conversas_${(req.query.inicio || "todas").replace(/-/g, "")}_a_${(req.query.fim || "hoje").replace(/-/g, "")}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${nomeArquivo}"`);
+    res.send("\uFEFF" + csv); // BOM pro Excel abrir acentuação certinho
+  });
+
   app.get("/api/cobranca/metricas", auth, gerenteOnly, (req, res) => {
     garantirEstrutura();
     const chats = Object.values(db.waChats).filter((c) => c.canal === "oficial");

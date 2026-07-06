@@ -22,6 +22,23 @@ export const api = {
   login: (login, senha) => req("POST", "/api/login", { login, senha }),
   me: () => req("GET", "/api/me"),
   updateMe: (dados) => req("PUT", "/api/me", dados),
+  exportarConversas: async (inicio, fim) => {
+    const params = new URLSearchParams();
+    if (inicio) params.set("inicio", inicio);
+    if (fim) params.set("fim", fim);
+    const t = getToken();
+    const res = await fetch("/api/cobranca/exportar-conversas?" + params.toString(), {
+      headers: t ? { Authorization: "Bearer " + t } : {},
+    });
+    if (!res.ok) { let d = null; try { d = await res.json(); } catch (_) {} throw new Error((d && d.error) || "Erro ao exportar"); }
+    const blob = await res.blob();
+    const nome = (res.headers.get("Content-Disposition") || "").match(/filename="(.+)"/);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = (nome && nome[1]) || "conversas.csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  },
 
   listUsers: () => req("GET", "/api/users"),
   createUser: (dados) => req("POST", "/api/users", dados),
