@@ -474,6 +474,23 @@ function Conversas() {
                         <audio controls src={"/media/" + m.arquivo} style={{ width: 220, height: 36 }} />
                         {m.content && m.content !== "🎤 Áudio" && <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>{m.content}</div>}
                       </div>
+                    ) : m.tipo === "image" && m.arquivo ? (
+                      <div>
+                        <a href={"/media/" + m.arquivo} target="_blank" rel="noopener noreferrer">
+                          <img src={"/media/" + m.arquivo} alt="Imagem enviada" style={{ maxWidth: 240, maxHeight: 240, borderRadius: 10, display: "block", cursor: "zoom-in" }} />
+                        </a>
+                        {m.content && m.content !== "📷 Foto" && <div style={{ fontSize: 13, marginTop: 6 }}>{m.content}</div>}
+                      </div>
+                    ) : m.tipo === "video" && m.arquivo ? (
+                      <div>
+                        <video controls src={"/media/" + m.arquivo} style={{ maxWidth: 260, maxHeight: 260, borderRadius: 10, display: "block" }} />
+                        {m.content && m.content !== "🎬 Vídeo" && <div style={{ fontSize: 13, marginTop: 6 }}>{m.content}</div>}
+                      </div>
+                    ) : m.tipo === "document" && m.arquivo ? (
+                      <a href={"/media/" + m.arquivo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, color: "inherit", textDecoration: "none" }}>
+                        <I.doc style={{ width: 22, height: 22, flexShrink: 0 }} />
+                        <span style={{ fontSize: 13, textDecoration: "underline" }}>{m.filename || "Documento"}</span>
+                      </a>
                     ) : m.transcricao ? (
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.75, marginBottom: 2 }}>🎤 Áudio (transcrito)</div>
