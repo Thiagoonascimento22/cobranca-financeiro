@@ -558,6 +558,10 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
 
   function blocoComplianceEDadosDivida(nomeLead, divida) {
     const P = [];
+    const hoje = new Date();
+    const hojeISO = hoje.toISOString().slice(0, 10);
+    const hojeExtenso = hoje.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" });
+    P.push(`DATA DE HOJE: ${hojeExtenso} (${hojeISO}). Use essa data como referência real pra calcular qualquer prazo, vencimento ou "mês que vem" — NUNCA calcule data de cabeça sem se basear nela, e NUNCA proponha ou registre uma data de vencimento anterior a hoje.`);
     if (nomeLead) P.push(`O nome do aluno com quem você fala é: ${nomeLead}.`);
     if (divida && (divida.valor || divida.vencimento)) {
       const atraso = diasDeAtraso(divida.vencimento);
@@ -841,8 +845,21 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       if (mMotivo) { chat.motivoInadimplencia = lim(mMotivo[1], 500); resposta = resposta.replace(/\[MOTIVO:[^\]]+\]/i, "").trim(); }
       const mAcordo = resposta.match(/\[ACORDO_PROPOSTO:\s*parcelas=(\d+);\s*valor_parcela=([\d.,]+);\s*vencimento=(\d{4}-\d{2}-\d{2})\]/i);
       if (mAcordo) {
-        acordoProposto = { parcelas: mAcordo[1], valorParcela: mAcordo[2].replace(",", "."), vencimento: mAcordo[3] };
-        resposta = resposta.replace(mAcordo[0], "").trim();
+        const vencProposto = mAcordo[3];
+        const hojeISOAgora = new Date().toISOString().slice(0, 10);
+        const diasDiferenca = Math.round((new Date(vencProposto + "T00:00:00-03:00") - new Date(hojeISOAgora + "T00:00:00-03:00")) / 86400000);
+        // trava de segurança: nunca aceita data no passado nem absurdamente longe (>120 dias) —
+        // isso pega alucinação de data da IA (ex.: propor vencimento em 2023, ou ano errado)
+        // antes de virar um acordo de verdade. Em vez de registrar errado, escala pro humano.
+        if (diasDiferenca < 0 || diasDiferenca > 120) {
+          resposta = resposta.replace(mAcordo[0], "").trim();
+          passarHumano = true;
+          if (!Array.isArray(chat.notas)) chat.notas = [];
+          chat.notas.push({ tipo: "acordo_data_suspeita", texto: `⚠️ A IA tentou propor um acordo com vencimento em ${vencProposto} (${diasDiferenca} dias a partir de hoje) — data suspeita, bloqueada automaticamente e escalada pra revisão humana.`, ts: Date.now(), por: "Automação" });
+        } else {
+          acordoProposto = { parcelas: mAcordo[1], valorParcela: mAcordo[2].replace(",", "."), vencimento: vencProposto };
+          resposta = resposta.replace(mAcordo[0], "").trim();
+        }
       }
 
       // rede de segurança por palavra-chave (não depende só do modelo lembrar da tag)
@@ -1353,6 +1370,11 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (req.user.role !== "gerente" && chat.atendenteId !== req.user.id) return res.status(403).json({ error: "Sem acesso" });
     const b = req.body || {};
     if (!b.parcelas || !b.valorParcela || !b.vencimento) return res.status(400).json({ error: "Informe parcelas, valorParcela e vencimento" });
+    // checagem de sanidade — pega typo de data (ex.: digitar 2023 sem querer) antes de virar acordo de verdade
+    const diasDif = Math.round((new Date(b.vencimento + "T00:00:00-03:00") - new Date()) / 86400000);
+    if (diasDif < -3 || diasDif > 730) {
+      return res.status(400).json({ error: `Essa data de vencimento (${b.vencimento}) está ${diasDif < 0 ? "no passado" : "muito distante"} — confere se não foi digitada errada antes de salvar.` });
+    }
     const acordo = registrarAcordo(chat, { parcelas: b.parcelas, valorParcela: b.valorParcela, vencimento: b.vencimento, criadoPor: req.user.nome });
     salvar();
     res.json({ ok: true, acordo });
