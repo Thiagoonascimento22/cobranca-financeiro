@@ -1,5 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Mp3Encoder } from "@breezystack/lamejs";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 import { api, getToken, setToken } from "./api.js";
 
 /* ============================================================
@@ -112,6 +115,48 @@ function ScrollFab({ show, onClick }) {
     <button className="scroll-fab" onClick={onClick} aria-label="Rolar para o fim">
       <I.down />
     </button>
+  );
+}
+
+/* prévia visual de PDF na conversa — renderiza a primeira página como imagem,
+   sem precisar de nada no servidor (tudo acontece no navegador) */
+function PdfPreview({ url, filename }) {
+  const canvasRef = useRef(null);
+  const [status, setStatus] = useState("carregando"); // carregando | ok | erro
+
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        const pdf = await pdfjsLib.getDocument(url).promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 1.3 });
+        const canvas = canvasRef.current;
+        if (!canvas || cancelado) return;
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext("2d");
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        if (!cancelado) setStatus("ok");
+      } catch (e) { if (!cancelado) setStatus("erro"); }
+    })();
+    return () => { cancelado = true; };
+  }, [url]);
+
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
+      {status === "erro" ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <I.doc style={{ width: 22, height: 22, flexShrink: 0 }} />
+          <span style={{ fontSize: 13, textDecoration: "underline" }}>{filename || "Documento"}</span>
+        </div>
+      ) : (
+        <>
+          <canvas ref={canvasRef} style={{ maxWidth: 220, width: "100%", height: "auto", borderRadius: 10, display: "block", border: "1px solid rgba(0,0,0,.1)", background: "#fff" }} />
+          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 5, textDecoration: "underline" }}>{filename || "Ver PDF"}</div>
+        </>
+      )}
+    </a>
   );
 }
 
@@ -486,6 +531,8 @@ function Conversas() {
                         <video controls src={"/media/" + m.arquivo} style={{ maxWidth: 260, maxHeight: 260, borderRadius: 10, display: "block" }} />
                         {m.content && m.content !== "🎬 Vídeo" && <div style={{ fontSize: 13, marginTop: 6 }}>{m.content}</div>}
                       </div>
+                    ) : m.tipo === "document" && m.arquivo && (m.mimetype === "application/pdf" || /\.pdf$/i.test(m.filename || m.arquivo)) ? (
+                      <PdfPreview url={"/media/" + m.arquivo} filename={m.filename} />
                     ) : m.tipo === "document" && m.arquivo ? (
                       <a href={"/media/" + m.arquivo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, color: "inherit", textDecoration: "none" }}>
                         <I.doc style={{ width: 22, height: 22, flexShrink: 0 }} />
