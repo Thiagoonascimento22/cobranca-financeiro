@@ -519,12 +519,12 @@ function Conversas() {
                         <audio controls src={"/media/" + m.arquivo} style={{ width: 220, height: 36 }} />
                         {m.content && m.content !== "🎤 Áudio" && <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>{m.content}</div>}
                       </div>
-                    ) : m.tipo === "image" && m.arquivo ? (
+                    ) : m.arquivo && (m.tipo === "image" || /\.(jpe?g|png|gif|webp)$/i.test(m.arquivo)) ? (
                       <div>
                         <a href={"/media/" + m.arquivo} target="_blank" rel="noopener noreferrer">
                           <img src={"/media/" + m.arquivo} alt="Imagem enviada" style={{ maxWidth: 240, maxHeight: 240, borderRadius: 10, display: "block", cursor: "zoom-in" }} />
                         </a>
-                        {m.content && m.content !== "📷 Foto" && <div style={{ fontSize: 13, marginTop: 6 }}>{m.content}</div>}
+                        {m.content && m.content !== "📷 Foto" && m.content !== "📄 Documento" && <div style={{ fontSize: 13, marginTop: 6 }}>{m.content}</div>}
                       </div>
                     ) : m.tipo === "video" && m.arquivo ? (
                       <div>
