@@ -1520,11 +1520,10 @@ function DisparoScreen() {
 /* ============================================================
    ACORDOS — automação pós-acordo (parcelas, lembretes, quebra)
    ============================================================ */
-function ConfigAlertas() {
+function ConfigAlertasModal({ onClose }) {
   const [a, setA] = useState(null);
   const [novaPalavra, setNovaPalavra] = useState("");
   const [novoTelefone, setNovoTelefone] = useState("");
-  const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
   const [numeros, setNumeros] = useState([]);
   const [numeroId, setNumeroId] = useState("");
@@ -1540,8 +1539,8 @@ function ConfigAlertas() {
   }, [numeroId]);
 
   async function salvar(novo) {
-    setSalvando(true); setMsg("");
-    try { const r = await api.setAlertas(novo || a); setA(r); setMsg("Salvo."); } catch (e) { setMsg("Erro: " + e.message); } finally { setSalvando(false); }
+    setMsg("");
+    try { const r = await api.setAlertas(novo || a); setA(r); setMsg("Salvo."); } catch (e) { setMsg("Erro: " + e.message); }
   }
   function adicionarPalavra() {
     if (!novaPalavra.trim()) return;
@@ -1558,78 +1557,85 @@ function ConfigAlertas() {
 
   if (!a) return null;
   return (
-    <div className="cob-card">
-      <div className="cob-card-h"><h3>Alertas por palavra-chave</h3></div>
-      <div className="cob-card-body">
-        <p className="agx-psub">
-          Quando um aluno mencionar uma dessas palavras numa conversa, o sistema manda um aviso automático (por
-          WhatsApp, usando o mesmo número) pros telefones configurados abaixo — útil pra saber na hora quando alguém
-          pede boleto, comprovante, etc.
-        </p>
-        <p className="agx-psub" style={{ background: "var(--surface-2)", padding: "10px 14px", borderRadius: 10 }}>
-          <strong style={{ color: "var(--text)" }}>Importante:</strong> esse aviso só funciona com um <strong>template aprovado</strong> —
-          o WhatsApp não deixa iniciar conversa livre com alguém que não te mandou mensagem nas últimas 24h, e é exatamente
-          esse o caso do financeiro recebendo um alerta do nada. Cria um template simples em <strong>Templates</strong> (ex.:
-          "🔔 Alerta: o aluno {"{{1}}"} mencionou \"{"{{2}}"}\" numa conversa. Telefone: {"{{3}}"}") e escolhe ele abaixo.
-        </p>
+    <Modal titulo="Alertas por palavra-chave" subtitulo="Avisa o financeiro na hora quando o aluno mencionar algo importante" onClose={onClose} largura={620}>
+      <p className="agx-psub" style={{ background: "var(--surface-2)", padding: "10px 14px", borderRadius: 10 }}>
+        <strong style={{ color: "var(--text)" }}>Importante:</strong> esse aviso só funciona com um <strong>template aprovado</strong> —
+        o WhatsApp não deixa iniciar conversa livre com quem não te mandou mensagem nas últimas 24h. Cria um template simples em{" "}
+        <strong>Templates</strong> (ex.: "🔔 Alerta: o aluno {"{{1}}"} mencionou \"{"{{2}}"}\" numa conversa. Telefone: {"{{3}}"}") e escolhe ele abaixo.
+      </p>
 
-        <div className="field" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input type="checkbox" checked={a.ativo} onChange={(e) => { const novo = { ...a, ativo: e.target.checked }; setA(novo); salvar(novo); }} />
-          <label style={{ margin: 0 }}>Alertas ativos</label>
-        </div>
-
-        <div className="row2" style={{ marginTop: 14 }}>
-          <div className="field"><label>Número (pra listar os templates aprovados dele)</label>
-            <select className="select" value={numeroId} onChange={(e) => setNumeroId(e.target.value)}>
-              <option value="">Selecione</option>
-              {numeros.map((n) => <option key={n.id} value={n.id}>{n.apelido}</option>)}
-            </select>
-          </div>
-          <div className="field"><label>Template do alerta</label>
-            <select className="select" value={a.templateAlerta} onChange={(e) => { const novo = { ...a, templateAlerta: e.target.value }; setA(novo); salvar(novo); }}>
-              <option value="">{numeroId ? "Selecione" : "Escolha um número primeiro"}</option>
-              {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
-            </select>
-          </div>
-        </div>
-        {!a.templateAlerta && <p className="agx-psub" style={{ color: "var(--amber)" }}>Sem template escolhido, o alerta não vai ser enviado — só fica anotado na conversa.</p>}
-
-        <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginTop: 14, marginBottom: 8 }}>Palavras que disparam o alerta</label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-          {a.palavras.map((p) => (
-            <span key={p} className="cob-pill on" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {p}
-              <button onClick={() => removerPalavra(p)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", padding: 0, display: "flex" }}><I.x style={{ width: 11, height: 11 }} /></button>
-            </span>
-          ))}
-          {a.palavras.length === 0 && <span className="agx-psub" style={{ margin: 0 }}>Nenhuma palavra configurada ainda.</span>}
-        </div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
-          <input className="input" style={{ flex: 1 }} placeholder="Ex: boleto" value={novaPalavra} onChange={(e) => setNovaPalavra(e.target.value)} onKeyDown={(e) => e.key === "Enter" && adicionarPalavra()} />
-          <button className="btn btn-sm btn-primary" onClick={adicionarPalavra}>Adicionar</button>
-        </div>
-
-        <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 8 }}>Telefones do financeiro que recebem o alerta</label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-          {a.telefones.map((t) => (
-            <span key={t} className="cob-pill on" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {t}
-              <button onClick={() => removerTelefone(t)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", padding: 0, display: "flex" }}><I.x style={{ width: 11, height: 11 }} /></button>
-            </span>
-          ))}
-          {a.telefones.length === 0 && <span className="agx-psub" style={{ margin: 0 }}>Nenhum telefone configurado ainda.</span>}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input className="input" style={{ flex: 1 }} placeholder="Ex: 5544999998888 (com DDI e DDD)" value={novoTelefone} onChange={(e) => setNovoTelefone(e.target.value)} onKeyDown={(e) => e.key === "Enter" && adicionarTelefone()} />
-          <button className="btn btn-sm btn-primary" onClick={adicionarTelefone}>Adicionar</button>
-        </div>
-        {msg && <p className="agx-psub" style={{ color: msg.startsWith("Erro") ? "var(--coral)" : "var(--mint)", marginTop: 10 }}>{msg}</p>}
+      <div className="field" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <input type="checkbox" checked={a.ativo} onChange={(e) => { const novo = { ...a, ativo: e.target.checked }; setA(novo); salvar(novo); }} />
+        <label style={{ margin: 0 }}>Alertas ativos</label>
       </div>
+
+      <div className="row2" style={{ marginTop: 14 }}>
+        <div className="field"><label>Número (pra listar os templates aprovados dele)</label>
+          <select className="select" value={numeroId} onChange={(e) => setNumeroId(e.target.value)}>
+            <option value="">Selecione</option>
+            {numeros.map((n) => <option key={n.id} value={n.id}>{n.apelido}</option>)}
+          </select>
+        </div>
+        <div className="field"><label>Template do alerta</label>
+          <select className="select" value={a.templateAlerta} onChange={(e) => { const novo = { ...a, templateAlerta: e.target.value }; setA(novo); salvar(novo); }}>
+            <option value="">{numeroId ? "Selecione" : "Escolha um número primeiro"}</option>
+            {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+          </select>
+        </div>
+      </div>
+      {!a.templateAlerta && <p className="agx-psub" style={{ color: "var(--amber)" }}>Sem template escolhido, o alerta não vai ser enviado — só fica anotado na conversa.</p>}
+
+      <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginTop: 14, marginBottom: 8 }}>Palavras que disparam o alerta</label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+        {a.palavras.map((p) => (
+          <span key={p} className="cob-pill on" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {p}
+            <button onClick={() => removerPalavra(p)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", padding: 0, display: "flex" }}><I.x style={{ width: 11, height: 11 }} /></button>
+          </span>
+        ))}
+        {a.palavras.length === 0 && <span className="agx-psub" style={{ margin: 0 }}>Nenhuma palavra configurada ainda.</span>}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+        <input className="input" style={{ flex: 1 }} placeholder="Ex: boleto" value={novaPalavra} onChange={(e) => setNovaPalavra(e.target.value)} onKeyDown={(e) => e.key === "Enter" && adicionarPalavra()} />
+        <button className="btn btn-sm btn-primary" onClick={adicionarPalavra}>Adicionar</button>
+      </div>
+
+      <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 8 }}>Telefones do financeiro que recebem o alerta</label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+        {a.telefones.map((t) => (
+          <span key={t} className="cob-pill on" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {t}
+            <button onClick={() => removerTelefone(t)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", padding: 0, display: "flex" }}><I.x style={{ width: 11, height: 11 }} /></button>
+          </span>
+        ))}
+        {a.telefones.length === 0 && <span className="agx-psub" style={{ margin: 0 }}>Nenhum telefone configurado ainda.</span>}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input className="input" style={{ flex: 1 }} placeholder="Ex: 5544999998888 (com DDI e DDD)" value={novoTelefone} onChange={(e) => setNovoTelefone(e.target.value)} onKeyDown={(e) => e.key === "Enter" && adicionarTelefone()} />
+        <button className="btn btn-sm btn-primary" onClick={adicionarTelefone}>Adicionar</button>
+      </div>
+      {msg && <p className="agx-psub" style={{ color: msg.startsWith("Erro") ? "var(--coral)" : "var(--mint)", marginTop: 10 }}>{msg}</p>}
+      <button className="btn btn-ghost" style={{ width: "100%", marginTop: 10 }} onClick={onClose}>Fechar</button>
+    </Modal>
+  );
+}
+
+function ResumoAlertas() {
+  const [a, setA] = useState(null);
+  const [aberto, setAberto] = useState(false);
+  useEffect(() => { api.alertas().then(setA).catch(() => {}); }, [aberto]);
+  if (!a) return null;
+  return (
+    <div className="cob-card" style={{ marginBottom: 0, padding: 18 }}>
+      <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>Alertas por palavra-chave</div>
+      <span className={"cob-pill " + (a.ativo && a.templateAlerta ? "on" : "off")}>{a.ativo && a.templateAlerta ? `ativo · ${a.palavras.length} palavra(s)` : "inativo"}</span>
+      <button className="btn btn-sm btn-ghost" style={{ width: "100%", marginTop: 12 }} onClick={() => setAberto(true)}><I.cog style={{ width: 14, height: 14 }} /> Configurar</button>
+      {aberto && <ConfigAlertasModal onClose={() => setAberto(false)} />}
     </div>
   );
 }
 
-function ConfigLembretes() {
+function ConfigLembretesModal({ onClose }) {
   const [cfg, setCfg] = useState(null);
   const [numeros, setNumeros] = useState([]);
   const [numeroId, setNumeroId] = useState("");
@@ -1653,49 +1659,64 @@ function ConfigLembretes() {
 
   if (!cfg) return null;
   return (
-    <div className="cob-card">
-      <div className="cob-card-h"><h3>Lembretes automáticos <span className="soon-badge">configura aqui</span></h3></div>
-      <div className="cob-card-body">
-        <p className="agx-psub">
-          A cada hora, o sistema confere as parcelas de todo acordo. Manda o template de lembrete alguns dias antes do
-          vencimento, e se a parcela vencer sem pagamento (+ carência), marca o acordo como quebrado e reabre pro atendente,
-          usando o template de quebra (se configurado).
-        </p>
-        <div className="field"><label>Número (só pra listar os templates aprovados dele)</label>
-          <select className="select" value={numeroId} onChange={(e) => setNumeroId(e.target.value)}>
-            <option value="">Selecione</option>
-            {numeros.map((n) => <option key={n.id} value={n.id}>{n.apelido}</option>)}
+    <Modal titulo="Lembretes automáticos" subtitulo="Configura o pós-acordo e a vigilância de vencimento" onClose={onClose} largura={620}>
+      <p className="agx-psub">
+        A cada hora, o sistema confere as parcelas de todo acordo. Manda o template de lembrete alguns dias antes do
+        vencimento, e se a parcela vencer sem pagamento (+ carência), marca o acordo como quebrado e reabre pro atendente,
+        usando o template de quebra (se configurado).
+      </p>
+      <div className="field"><label>Número (só pra listar os templates aprovados dele)</label>
+        <select className="select" value={numeroId} onChange={(e) => setNumeroId(e.target.value)}>
+          <option value="">Selecione</option>
+          {numeros.map((n) => <option key={n.id} value={n.id}>{n.apelido}</option>)}
+        </select>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Template de lembrete</label>
+          <select className="select" value={cfg.templateLembrete} onChange={(e) => setCfg({ ...cfg, templateLembrete: e.target.value })}>
+            <option value="">Nenhum (não manda lembrete)</option>
+            {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
           </select>
         </div>
-        <div className="row2">
-          <div className="field"><label>Template de lembrete</label>
-            <select className="select" value={cfg.templateLembrete} onChange={(e) => setCfg({ ...cfg, templateLembrete: e.target.value })}>
-              <option value="">Nenhum (não manda lembrete)</option>
-              {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
-            </select>
-          </div>
-          <div className="field"><label>Template de aviso de quebra</label>
-            <select className="select" value={cfg.templateQuebra} onChange={(e) => setCfg({ ...cfg, templateQuebra: e.target.value })}>
-              <option value="">Nenhum (não avisa)</option>
-              {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
-            </select>
-          </div>
+        <div className="field"><label>Template de aviso de quebra</label>
+          <select className="select" value={cfg.templateQuebra} onChange={(e) => setCfg({ ...cfg, templateQuebra: e.target.value })}>
+            <option value="">Nenhum (não avisa)</option>
+            {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+          </select>
         </div>
-        <div className="row2">
-          <div className="field"><label>Dias antes do vencimento pra lembrar</label><input className="input" type="number" min="0" max="10" value={cfg.diasAntesLembrete} onChange={(e) => setCfg({ ...cfg, diasAntesLembrete: Number(e.target.value) })} /></div>
-          <div className="field"><label>Dias de carência antes de considerar quebrado</label><input className="input" type="number" min="0" max="15" value={cfg.diasCarencia} onChange={(e) => setCfg({ ...cfg, diasCarencia: Number(e.target.value) })} /></div>
-        </div>
-        <div className="agx-sep" />
-        <h4 className="agx-h" style={{ marginBottom: 6 }}>Vigilância de vencimento original (antes de qualquer acordo)</h4>
-        <p className="agx-psub">
-          Cobre quem foi disparado mas nunca fechou acordo — se o vencimento original passar dessa quantidade de dias sem
-          resolução, o sistema escala automaticamente pra um atendente humano revisar (não manda mensagem sozinho aqui,
-          só evita que o caso fique esquecido).
-        </p>
-        <div className="field"><label>Dias após o vencimento original pra escalar</label><input className="input" type="number" min="0" max="30" value={cfg.diasCarenciaContatoInicial} onChange={(e) => setCfg({ ...cfg, diasCarenciaContatoInicial: Number(e.target.value) })} /></div>
-        {msg && <p className="agx-psub" style={{ color: msg.startsWith("Erro") ? "var(--coral)" : "var(--mint)" }}>{msg}</p>}
-        <button className="btn btn-primary" onClick={salvar} disabled={salvando}>{salvando ? "Salvando..." : "Salvar"}</button>
       </div>
+      <div className="row2">
+        <div className="field"><label>Dias antes do vencimento pra lembrar</label><input className="input" type="number" min="0" max="10" value={cfg.diasAntesLembrete} onChange={(e) => setCfg({ ...cfg, diasAntesLembrete: Number(e.target.value) })} /></div>
+        <div className="field"><label>Dias de carência antes de considerar quebrado</label><input className="input" type="number" min="0" max="15" value={cfg.diasCarencia} onChange={(e) => setCfg({ ...cfg, diasCarencia: Number(e.target.value) })} /></div>
+      </div>
+      <div className="agx-sep" />
+      <h4 className="agx-h" style={{ marginBottom: 6 }}>Vigilância de vencimento original (antes de qualquer acordo)</h4>
+      <p className="agx-psub">
+        Cobre quem foi disparado mas nunca fechou acordo — se o vencimento original passar dessa quantidade de dias sem
+        resolução, o sistema escala automaticamente pra um atendente humano revisar (não manda mensagem sozinho aqui,
+        só evita que o caso fique esquecido).
+      </p>
+      <div className="field"><label>Dias após o vencimento original pra escalar</label><input className="input" type="number" min="0" max="30" value={cfg.diasCarenciaContatoInicial} onChange={(e) => setCfg({ ...cfg, diasCarenciaContatoInicial: Number(e.target.value) })} /></div>
+      {msg && <p className="agx-psub" style={{ color: msg.startsWith("Erro") ? "var(--coral)" : "var(--mint)" }}>{msg}</p>}
+      <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Fechar</button>
+        <button className="btn btn-primary" style={{ flex: 1 }} onClick={salvar} disabled={salvando}>{salvando ? "Salvando..." : "Salvar"}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function ResumoLembretes() {
+  const [cfg, setCfg] = useState(null);
+  const [aberto, setAberto] = useState(false);
+  useEffect(() => { api.config().then(setCfg).catch(() => {}); }, [aberto]);
+  if (!cfg) return null;
+  return (
+    <div className="cob-card" style={{ marginBottom: 0, padding: 18 }}>
+      <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>Lembretes automáticos</div>
+      <span className={"cob-pill " + (cfg.templateLembrete ? "on" : "off")}>{cfg.templateLembrete ? "configurado" : "sem template"}</span>
+      <button className="btn btn-sm btn-ghost" style={{ width: "100%", marginTop: 12 }} onClick={() => setAberto(true)}><I.cog style={{ width: 14, height: 14 }} /> Configurar</button>
+      {aberto && <ConfigLembretesModal onClose={() => setAberto(false)} />}
     </div>
   );
 }
@@ -1712,8 +1733,10 @@ function AcordosScreen() {
       <div className="page-head">
         <div><h2>Acordos</h2><p>Parcelas, lembretes e quebra de acordo automáticos.</p></div>
       </div>
-      <ConfigAlertas />
-      <ConfigLembretes />
+      <div className="dash-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+        <ResumoAlertas />
+        <ResumoLembretes />
+      </div>
       <div className="cob-card">
         <div className="cob-card-h"><h3>Acordos fechados</h3></div>
         {lista.map((a) => (
