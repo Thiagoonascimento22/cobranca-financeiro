@@ -1520,6 +1520,115 @@ function DisparoScreen() {
 /* ============================================================
    ACORDOS — automação pós-acordo (parcelas, lembretes, quebra)
    ============================================================ */
+function ConfigAlertas() {
+  const [a, setA] = useState(null);
+  const [novaPalavra, setNovaPalavra] = useState("");
+  const [novoTelefone, setNovoTelefone] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [numeros, setNumeros] = useState([]);
+  const [numeroId, setNumeroId] = useState("");
+  const [templates, setTemplates] = useState([]);
+
+  useEffect(() => {
+    api.alertas().then(setA).catch(() => {});
+    api.numeros().then(setNumeros).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!numeroId) { setTemplates([]); return; }
+    api.templates(numeroId).then((r) => setTemplates((r.todos || r.templates || []).filter((t) => t.status === "APPROVED"))).catch(() => setTemplates([]));
+  }, [numeroId]);
+
+  async function salvar(novo) {
+    setSalvando(true); setMsg("");
+    try { const r = await api.setAlertas(novo || a); setA(r); setMsg("Salvo."); } catch (e) { setMsg("Erro: " + e.message); } finally { setSalvando(false); }
+  }
+  function adicionarPalavra() {
+    if (!novaPalavra.trim()) return;
+    const novo = { ...a, palavras: [...a.palavras, novaPalavra.trim()] };
+    setA(novo); setNovaPalavra(""); salvar(novo);
+  }
+  function removerPalavra(p) { const novo = { ...a, palavras: a.palavras.filter((x) => x !== p) }; setA(novo); salvar(novo); }
+  function adicionarTelefone() {
+    if (!novoTelefone.trim()) return;
+    const novo = { ...a, telefones: [...a.telefones, novoTelefone.trim()] };
+    setA(novo); setNovoTelefone(""); salvar(novo);
+  }
+  function removerTelefone(t) { const novo = { ...a, telefones: a.telefones.filter((x) => x !== t) }; setA(novo); salvar(novo); }
+
+  if (!a) return null;
+  return (
+    <div className="cob-card">
+      <div className="cob-card-h"><h3>Alertas por palavra-chave</h3></div>
+      <div className="cob-card-body">
+        <p className="agx-psub">
+          Quando um aluno mencionar uma dessas palavras numa conversa, o sistema manda um aviso automático (por
+          WhatsApp, usando o mesmo número) pros telefones configurados abaixo — útil pra saber na hora quando alguém
+          pede boleto, comprovante, etc.
+        </p>
+        <p className="agx-psub" style={{ background: "var(--surface-2)", padding: "10px 14px", borderRadius: 10 }}>
+          <strong style={{ color: "var(--text)" }}>Importante:</strong> esse aviso só funciona com um <strong>template aprovado</strong> —
+          o WhatsApp não deixa iniciar conversa livre com alguém que não te mandou mensagem nas últimas 24h, e é exatamente
+          esse o caso do financeiro recebendo um alerta do nada. Cria um template simples em <strong>Templates</strong> (ex.:
+          "🔔 Alerta: o aluno {"{{1}}"} mencionou \"{"{{2}}"}\" numa conversa. Telefone: {"{{3}}"}") e escolhe ele abaixo.
+        </p>
+
+        <div className="field" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input type="checkbox" checked={a.ativo} onChange={(e) => { const novo = { ...a, ativo: e.target.checked }; setA(novo); salvar(novo); }} />
+          <label style={{ margin: 0 }}>Alertas ativos</label>
+        </div>
+
+        <div className="row2" style={{ marginTop: 14 }}>
+          <div className="field"><label>Número (pra listar os templates aprovados dele)</label>
+            <select className="select" value={numeroId} onChange={(e) => setNumeroId(e.target.value)}>
+              <option value="">Selecione</option>
+              {numeros.map((n) => <option key={n.id} value={n.id}>{n.apelido}</option>)}
+            </select>
+          </div>
+          <div className="field"><label>Template do alerta</label>
+            <select className="select" value={a.templateAlerta} onChange={(e) => { const novo = { ...a, templateAlerta: e.target.value }; setA(novo); salvar(novo); }}>
+              <option value="">{numeroId ? "Selecione" : "Escolha um número primeiro"}</option>
+              {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+            </select>
+          </div>
+        </div>
+        {!a.templateAlerta && <p className="agx-psub" style={{ color: "var(--amber)" }}>Sem template escolhido, o alerta não vai ser enviado — só fica anotado na conversa.</p>}
+
+        <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginTop: 14, marginBottom: 8 }}>Palavras que disparam o alerta</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+          {a.palavras.map((p) => (
+            <span key={p} className="cob-pill on" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {p}
+              <button onClick={() => removerPalavra(p)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", padding: 0, display: "flex" }}><I.x style={{ width: 11, height: 11 }} /></button>
+            </span>
+          ))}
+          {a.palavras.length === 0 && <span className="agx-psub" style={{ margin: 0 }}>Nenhuma palavra configurada ainda.</span>}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          <input className="input" style={{ flex: 1 }} placeholder="Ex: boleto" value={novaPalavra} onChange={(e) => setNovaPalavra(e.target.value)} onKeyDown={(e) => e.key === "Enter" && adicionarPalavra()} />
+          <button className="btn btn-sm btn-primary" onClick={adicionarPalavra}>Adicionar</button>
+        </div>
+
+        <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 8 }}>Telefones do financeiro que recebem o alerta</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+          {a.telefones.map((t) => (
+            <span key={t} className="cob-pill on" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {t}
+              <button onClick={() => removerTelefone(t)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", padding: 0, display: "flex" }}><I.x style={{ width: 11, height: 11 }} /></button>
+            </span>
+          ))}
+          {a.telefones.length === 0 && <span className="agx-psub" style={{ margin: 0 }}>Nenhum telefone configurado ainda.</span>}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input className="input" style={{ flex: 1 }} placeholder="Ex: 5544999998888 (com DDI e DDD)" value={novoTelefone} onChange={(e) => setNovoTelefone(e.target.value)} onKeyDown={(e) => e.key === "Enter" && adicionarTelefone()} />
+          <button className="btn btn-sm btn-primary" onClick={adicionarTelefone}>Adicionar</button>
+        </div>
+        {msg && <p className="agx-psub" style={{ color: msg.startsWith("Erro") ? "var(--coral)" : "var(--mint)", marginTop: 10 }}>{msg}</p>}
+      </div>
+    </div>
+  );
+}
+
 function ConfigLembretes() {
   const [cfg, setCfg] = useState(null);
   const [numeros, setNumeros] = useState([]);
@@ -1603,6 +1712,7 @@ function AcordosScreen() {
       <div className="page-head">
         <div><h2>Acordos</h2><p>Parcelas, lembretes e quebra de acordo automáticos.</p></div>
       </div>
+      <ConfigAlertas />
       <ConfigLembretes />
       <div className="cob-card">
         <div className="cob-card-h"><h3>Acordos fechados</h3></div>

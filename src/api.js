@@ -60,6 +60,8 @@ export const api = {
   setHorario: (h) => req("PUT", "/api/cobranca/horario", h),
   config: () => req("GET", "/api/cobranca/config"),
   setConfig: (c) => req("PUT", "/api/cobranca/config", c),
+  alertas: () => req("GET", "/api/cobranca/alertas"),
+  setAlertas: (a) => req("PUT", "/api/cobranca/alertas", a),
 
   // IAs (SDR / Negociadora)
   ias: () => req("GET", "/api/cobranca/ias"),

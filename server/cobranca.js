@@ -32,6 +32,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (!c.verifyToken) c.verifyToken = "instructiva_cob_" + Math.random().toString(36).slice(2, 10);
     if (!c.horario) c.horario = horarioPadrao();
     if (!c.config) c.config = { templateLembrete: "", templateQuebra: "", diasAntesLembrete: 2, diasCarencia: 2, diasCarenciaContatoInicial: 5 };
+    if (!c.alertas) c.alertas = { ativo: false, palavras: ["boleto", "comprovante"], telefones: [], templateAlerta: "" };
     if (c.config.diasAntesLembrete === undefined) c.config.diasAntesLembrete = 2;
     if (c.config.diasCarencia === undefined) c.config.diasCarencia = 2;
     if (c.config.diasCarenciaContatoInicial === undefined) c.config.diasCarenciaContatoInicial = 5;
@@ -175,6 +176,35 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     chat.atribuidoEm = Date.now();
     v.cobrancaLeadsRecebidos = (v.cobrancaLeadsRecebidos || 0) + 1;
     return v.id;
+  }
+
+  /* alerta por palavra-chave — manda WhatsApp pro(s) responsável(is) do financeiro
+     quando o aluno menciona algo configurado (ex.: "boleto", "comprovante"). Usa o mesmo
+     número oficial pra enviar, então não precisa de nenhuma integração nova. */
+  async function checarAlertaPalavraChave(chat, numeroCfg, textoLead) {
+    garantirEstrutura();
+    const cfg = db.cobranca.alertas;
+    if (!cfg || !cfg.ativo || !textoLead) return;
+    if (!cfg.templateAlerta) return; // sem template configurado, não tem como iniciar conversa fora da janela de 24h
+    const palavras = (cfg.palavras || []).filter(Boolean);
+    const telefones = (cfg.telefones || []).filter(Boolean);
+    if (!palavras.length || !telefones.length) return;
+    const txt = textoLead.toLowerCase();
+    const bateu = palavras.find((p) => txt.includes(String(p).toLowerCase()));
+    if (!bateu) return;
+    if (!chat.alertasEnviados) chat.alertasEnviados = {};
+    if (chat.alertasEnviados[bateu]) return; // já avisou sobre essa palavra nessa conversa, não repete
+    chat.alertasEnviados[bateu] = Date.now();
+    for (const tel of telefones) {
+      try {
+        // as variáveis do template dependem de como ele foi escrito — manda nome do aluno,
+        // a palavra que bateu, e o telefone dele, nessa ordem, pros 3 primeiros {{1}} {{2}} {{3}}
+        await enviarTemplate(numeroCfg, normalizaTelefone(tel), cfg.templateAlerta, "pt_BR", [chat.nome || chat.numero, bateu, chat.numero]);
+      } catch (e) { console.error("[cobranca] falha ao mandar alerta pra", tel, ":", e.message); }
+    }
+    if (!Array.isArray(chat.notas)) chat.notas = [];
+    chat.notas.push({ tipo: "alerta_enviado", texto: `Alerta automático enviado ao financeiro — aluno mencionou "${bateu}"`, ts: Date.now(), por: "Automação" });
+    salvar();
   }
 
   /* ============================================================
@@ -505,6 +535,18 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
 
   /* configurações gerais de pós-acordo */
   app.get("/api/cobranca/config", auth, gerenteOnly, (req, res) => { garantirEstrutura(); res.json(db.cobranca.config); });
+  app.get("/api/cobranca/alertas", auth, gerenteOnly, (req, res) => { garantirEstrutura(); res.json(db.cobranca.alertas); });
+  app.put("/api/cobranca/alertas", auth, gerenteOnly, (req, res) => {
+    garantirEstrutura();
+    const b = req.body || {};
+    const a = db.cobranca.alertas;
+    if (b.ativo !== undefined) a.ativo = !!b.ativo;
+    if (Array.isArray(b.palavras)) a.palavras = b.palavras.map((p) => lim(String(p || "").trim(), 40)).filter(Boolean).slice(0, 30);
+    if (Array.isArray(b.telefones)) a.telefones = b.telefones.map((t) => soDigitos(t)).filter(Boolean).slice(0, 10);
+    if (b.templateAlerta !== undefined) a.templateAlerta = lim(b.templateAlerta, 100);
+    salvar();
+    res.json(a);
+  });
   app.put("/api/cobranca/config", auth, gerenteOnly, (req, res) => {
     garantirEstrutura();
     const b = req.body || {};
@@ -1565,6 +1607,8 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
               const camp = (db.cobranca.campanhas || []).find((x) => x.id === chat.campanhaId);
               if (camp) camp.responderam = (camp.responderam || 0) + 1;
             } else if (chat.origemDisparo) chat.respondeu = true;
+
+            checarAlertaPalavraChave(chat, numeroCfg, content).catch((e) => console.error("[cobranca] erro no alerta:", e.message));
 
             const temIA = chat.iaId && !chat.iaPausada;
             console.log(`[cobranca] webhook: mensagem recebida no chat ${chat.id} — chat.iaId=${chat.iaId || "(nenhuma)"} iaPausada=${!!chat.iaPausada} → ${temIA ? "chamando rodarIA" : "sem IA, vai pro humano"}`);
