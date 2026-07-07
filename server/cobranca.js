@@ -11,6 +11,7 @@
    4. Automação Pós-Acordo     -> acompanha parcelas, manda lembrete
                                   e identifica quebra de acordo.
    ============================================================ */
+import pdfParse from "pdf-parse";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -378,6 +379,33 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       const data = await r.json();
       return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || "").trim() || null;
     } catch (e) { console.log("[cobranca] erro ao analisar imagem:", e.message); return null; }
+  }
+  // lê o texto de dentro de um PDF (a maioria dos comprovantes gerados por banco/boleto
+  // tem texto de verdade embutido, não é só imagem escaneada) e pede pra IA resumir.
+  // Se o PDF for só imagem escaneada (sem texto), não tem como ler por aqui — fica sem análise.
+  async function analisarPDF(buffer) {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key || !buffer) return null;
+    try {
+      const parsed = await pdfParse(buffer).catch(() => null);
+      const texto = (parsed && parsed.text || "").trim();
+      if (texto.length < 15) return null; // provavelmente PDF escaneado (só imagem), sem texto pra ler
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{
+            role: "user",
+            content: `Esse é o texto extraído de um PDF que um aluno mandou numa cobrança financeira (pode ser comprovante de pagamento, boleto, ou outro documento). Descreva em 1-2 frases curtas o que é: valor, data, forma de pagamento, se conseguir identificar. Se o texto não fizer sentido como documento financeiro, diga isso em 1 frase.\n\nTexto extraído:\n${lim(texto, 3000)}`,
+          }],
+          max_tokens: 200,
+        }),
+      });
+      if (!r.ok) { console.log("[cobranca] falha ao analisar PDF:", r.status); return null; }
+      const data = await r.json();
+      return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || "").trim() || null;
+    } catch (e) { console.log("[cobranca] erro ao analisar PDF:", e.message); return null; }
   }
   // gera um áudio (mp3) a partir de um texto, usando a mesma chave da ElevenLabs
   // configurada em Ligações. mp3 é aceito nativamente pelo WhatsApp, sem precisar
@@ -1698,6 +1726,9 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
                   else if (midiaTipo === "image") {
                     const descricao = await analisarImagem(baixado.buffer, baixado.mimetype);
                     if (descricao) transcricao = "[Imagem enviada pelo aluno] " + descricao;
+                  } else if (midiaTipo === "document" && (baixado.mimetype === "application/pdf" || /\.pdf$/i.test(midiaFilename))) {
+                    const descricao = await analisarPDF(baixado.buffer);
+                    if (descricao) transcricao = "[PDF enviado pelo aluno] " + descricao;
                   }
                 } else {
                   console.log("[cobranca] não consegui baixar mídia do webhook — tipo:", midiaTipo, "mediaId:", mediaIdMeta);

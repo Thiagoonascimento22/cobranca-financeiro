@@ -555,7 +555,10 @@ function Conversas() {
                         {m.content && m.content !== "🎬 Vídeo" && <div style={{ fontSize: 13, marginTop: 6 }}>{m.content}</div>}
                       </div>
                     ) : m.tipo === "document" && m.arquivo && (m.mimetype === "application/pdf" || /\.pdf$/i.test(m.filename || m.arquivo)) ? (
-                      <PdfPreview url={"/media/" + m.arquivo} filename={m.filename} />
+                      <div>
+                        <PdfPreview url={"/media/" + m.arquivo} filename={m.filename} />
+                        {m.transcricao && <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6, fontStyle: "italic" }}>🔎 {m.transcricao.replace(/^\[PDF enviado pelo aluno\] /, "")}</div>}
+                      </div>
                     ) : m.tipo === "document" && m.arquivo ? (
                       <a href={"/media/" + m.arquivo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, color: "inherit", textDecoration: "none" }}>
                         <I.doc style={{ width: 22, height: 22, flexShrink: 0 }} />
