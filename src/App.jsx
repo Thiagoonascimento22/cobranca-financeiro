@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Mp3Encoder } from "@breezystack/lamejs";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -162,7 +163,7 @@ function PdfPreview({ url, filename }) {
 
 /* modal genérico e leve, reutilizado em Números/Equipe pra ações de criar */
 function Modal({ titulo, subtitulo, onClose, children, largura }) {
-  return (
+  return createPortal(
     <div className="agx-overlay" onClick={onClose}>
       <div className="modal-box" style={{ width: largura || 480, maxWidth: "92vw" }} onClick={(e) => e.stopPropagation()}>
         <div className="mh">
@@ -176,7 +177,8 @@ function Modal({ titulo, subtitulo, onClose, children, largura }) {
         </div>
         <div className="mb">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -875,7 +877,7 @@ function IABuilder({ ia, papelInicial, iasNegociadoras, onClose, onSaved }) {
   }
   useEffect(() => { if (testeRef.current) testeRef.current.scrollTop = testeRef.current.scrollHeight; }, [testeHist.length]);
 
-  return (
+  return createPortal(
     <div className="agx-overlay">
       <div className="agx-modal">
         <div className="agx-head">
@@ -1062,7 +1064,8 @@ function IABuilder({ ia, papelInicial, iasNegociadoras, onClose, onSaved }) {
           </aside>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
