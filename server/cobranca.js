@@ -351,6 +351,34 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       return (await r.text() || "").trim() || null;
     } catch (e) { return null; }
   }
+  // "lê" uma imagem (foto/print de comprovante) usando o mesmo modelo de IA, com visão —
+  // vira texto que entra no histórico da conversa, então a IA que estiver atendendo já
+  // sabe o que tem no comprovante sem precisar de nenhuma ferramenta nova
+  async function analisarImagem(buffer, mimetype) {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key || !buffer) return null;
+    try {
+      const base64 = buffer.toString("base64");
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: "Essa imagem foi mandada por um aluno numa cobrança financeira. Se for um comprovante de pagamento (Pix, transferência, boleto pago), descreva em 1-2 frases curtas: valor, data e forma de pagamento, se conseguir identificar. Se não for um comprovante (por exemplo, um print de outra coisa, ou uma foto qualquer), diga em 1 frase o que a imagem mostra. Não invente número que não conseguir ler direito." },
+              { type: "image_url", image_url: { url: `data:${mimetype || "image/jpeg"};base64,${base64}` } },
+            ],
+          }],
+          max_tokens: 200,
+        }),
+      });
+      if (!r.ok) { console.log("[cobranca] falha ao analisar imagem:", r.status); return null; }
+      const data = await r.json();
+      return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || "").trim() || null;
+    } catch (e) { console.log("[cobranca] erro ao analisar imagem:", e.message); return null; }
+  }
   // gera um áudio (mp3) a partir de um texto, usando a mesma chave da ElevenLabs
   // configurada em Ligações. mp3 é aceito nativamente pelo WhatsApp, sem precisar
   // converter formato (webhook de ligação usa a mesma credencial, mas isso aqui é TTS simples).
@@ -1667,6 +1695,10 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
                 if (baixado) {
                   midiaArquivo = baixado.arquivo; midiaMime = baixado.mimetype;
                   if (midiaTipo === "audio") transcricao = await transcreverAudio(baixado.buffer, baixado.mimetype);
+                  else if (midiaTipo === "image") {
+                    const descricao = await analisarImagem(baixado.buffer, baixado.mimetype);
+                    if (descricao) transcricao = "[Imagem enviada pelo aluno] " + descricao;
+                  }
                 } else {
                   console.log("[cobranca] não consegui baixar mídia do webhook — tipo:", midiaTipo, "mediaId:", mediaIdMeta);
                 }

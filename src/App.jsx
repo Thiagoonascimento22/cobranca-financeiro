@@ -547,6 +547,7 @@ function Conversas() {
                           <img src={"/media/" + m.arquivo} alt="Imagem enviada" style={{ maxWidth: 240, maxHeight: 240, borderRadius: 10, display: "block", cursor: "zoom-in" }} />
                         </a>
                         {m.content && m.content !== "📷 Foto" && m.content !== "📄 Documento" && <div style={{ fontSize: 13, marginTop: 6 }}>{m.content}</div>}
+                        {m.transcricao && <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6, fontStyle: "italic" }}>🔎 {m.transcricao.replace(/^\[Imagem enviada pelo aluno\] /, "")}</div>}
                       </div>
                     ) : m.tipo === "video" && m.arquivo ? (
                       <div>
