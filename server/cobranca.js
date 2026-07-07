@@ -525,7 +525,12 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
         }),
       });
       const data = await r.json();
-      if (!r.ok) return res.status(400).json({ error: (data.error && data.error.message) || ("Erro Graph " + r.status) });
+      if (!r.ok) {
+        const err = data.error || {};
+        const detalhe = err.error_user_msg || err.error_user_title || err.message || ("Erro Graph " + r.status);
+        console.log("[cobranca] erro ao criar template — resposta completa da Meta:", JSON.stringify(err));
+        return res.status(400).json({ error: detalhe });
+      }
       res.json({ ok: true, id: data.id, status: data.status || "PENDING", category: data.category || categoria });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
