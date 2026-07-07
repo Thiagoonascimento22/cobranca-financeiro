@@ -509,13 +509,19 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     const categoria = String(b.categoria || "UTILITY").toUpperCase();
     const idioma = String(b.idioma || "pt_BR").trim();
     if (!nome || !corpo) return res.status(400).json({ error: "Informe o nome e o texto do template" });
+    // a Meta exige um "exemplo" pra cada variável {{n}} do corpo, senão recusa a criação —
+    // gera exemplos genéricos automaticamente, sem precisar o usuário preencher isso na mão
+    const numVars = new Set((corpo.match(/\{\{(\d+)\}\}/g) || []).map((m) => m.replace(/\D/g, ""))).size;
+    const exemplos = Array.from({ length: numVars }, (_, i) => `exemplo${i + 1}`);
+    const bodyComponent = { type: "BODY", text: corpo };
+    if (numVars > 0) bodyComponent.example = { body_text: [exemplos] };
     try {
       const r = await fetch(`${GRAPH}/${n.wabaId}/message_templates`, {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + n.token },
         body: JSON.stringify({
           name: nome, language: idioma,
           category: ["MARKETING", "AUTHENTICATION"].includes(categoria) ? categoria : "UTILITY",
-          components: [{ type: "BODY", text: corpo }],
+          components: [bodyComponent],
         }),
       });
       const data = await r.json();
