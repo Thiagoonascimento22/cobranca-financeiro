@@ -337,6 +337,7 @@ function Conversas() {
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [gravando, setGravando] = useState(false);
   const [convertendo, setConvertendo] = useState(false);
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   const [gravandoSegundos, setGravandoSegundos] = useState(0);
   const gravadorRef = useRef(null);
   const gravadorChunksRef = useRef([]);
@@ -455,6 +456,22 @@ function Conversas() {
     setGravando(false);
   }
 
+  function anexarArquivo(e) {
+    const f = e.target.files[0];
+    if (!f || !ativoId) return;
+    if (f.size > 15 * 1024 * 1024) { alert("Esse arquivo passa de 15MB, o WhatsApp não aceita."); e.target.value = ""; return; }
+    setEnviandoAnexo(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = String(reader.result).split(",")[1];
+      try {
+        await api.enviarDocumento(ativoId, base64, f.type || "application/octet-stream", f.name);
+        setChat(await api.chat(ativoId));
+      } catch (err) { alert(err.message); } finally { setEnviandoAnexo(false); e.target.value = ""; }
+    };
+    reader.readAsDataURL(f);
+  }
+
   async function excluirConversa(id, e) {
     e.stopPropagation();
     if (!confirm("Excluir essa conversa? As mensagens somem pra sempre.")) return;
@@ -502,7 +519,7 @@ function Conversas() {
                 <div className="av">{(chat.nome || "?").slice(0, 1).toUpperCase()}</div>
                 <div>
                   <div className="nm">{chat.nome}</div>
-                  <div className="num">{chat.numero}{chat.divida && chat.divida.vencimento ? ` · venc. ${chat.divida.vencimento}` : ""}{chat.divida && chat.divida.curso ? ` · ${chat.divida.curso}` : ""}</div>
+                  <div className="num">{chat.numero}{chat.divida && chat.divida.vencimento ? ` · venc. ${chat.divida.vencimento}` : ""}{chat.divida && chat.divida.curso ? ` · ${chat.divida.curso}` : ""}{chat.dividas && chat.dividas.length > 1 ? ` · ${chat.dividas.length} boletos em aberto` : ""}</div>
                   {chat.statusResumo && <div style={{ fontSize: 12, color: "var(--emerald, var(--brand))", marginTop: 2 }}>📌 {chat.statusResumo}</div>}
                 </div>
                 <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
@@ -576,6 +593,8 @@ function Conversas() {
                 <div className="wa-input">
                   <button className="btn btn-sm btn-ghost" onClick={() => setEmojiAberto((v) => !v)} title="Emojis" style={{ flexShrink: 0 }}>🙂</button>
                   <input placeholder="Escreva uma mensagem..." value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && enviar()} />
+                  <input id="anexo-input" type="file" style={{ display: "none" }} accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" onChange={anexarArquivo} />
+                  <button className="btn btn-sm btn-ghost" onClick={() => document.getElementById("anexo-input").click()} title="Anexar arquivo (boleto, etc.)" disabled={enviandoAnexo} style={{ flexShrink: 0 }}>{enviandoAnexo ? "..." : "📎"}</button>
                   <button className="btn btn-sm btn-ghost" onClick={iniciarGravacao} title="Gravar áudio" style={{ flexShrink: 0 }}>🎤</button>
                   <button className="wa-send" onClick={enviar}>Enviar</button>
                 </div>
@@ -1270,16 +1289,34 @@ function DisparoScreen() {
     return s; // formato desconhecido — deixa passar, mas pode não filtrar certo
   }
 
+  function proximoPendenteCliente(dividas) {
+    if (!dividas || !dividas.length) return null;
+    const pendentes = dividas.filter((d) => d.vencimento);
+    if (!pendentes.length) return dividas[0];
+    return pendentes.slice().sort((a, b) => a.vencimento.localeCompare(b.vencimento))[0];
+  }
+
   function montarContatos(header, linhas) {
     const idxNome = header.findIndex((h) => h.includes("nome"));
     const idxTel = header.findIndex((h) => h.includes("telefone") || h.includes("celular") || h.includes("whats"));
-    const idxValor = header.findIndex((h) => h.includes("valor"));
-    const idxVenc = header.findIndex((h) => h.includes("vencimento") || h.includes("venc"));
     const idxCurso = header.findIndex((h) => h.includes("curso"));
     const idxCpf = header.findIndex((h) => h.includes("cpf"));
     const idxEmail = header.findIndex((h) => h.includes("email") || h.includes("e-mail"));
     if (idxTel < 0) { setErro("Não achei a coluna de telefone no CSV. Cabeçalho encontrado: " + header.join(", ")); return null; }
-    if (filtroVenc !== "todos" && idxVenc < 0) { setErro("Pra filtrar por vencimento, o CSV precisa ter a coluna 'vencimento'."); return null; }
+
+    // detecta pares numerados valor1/vencimento1 ... valor10/vencimento10 (um boleto por mês/parcela).
+    // se não achar nenhum par numerado, cai no modo antigo: colunas únicas "valor" e "vencimento".
+    const paresNumerados = [];
+    for (let n = 1; n <= 10; n++) {
+      const iv = header.findIndex((h) => h === "valor" + n || h === "valor_" + n);
+      const id = header.findIndex((h) => h === "vencimento" + n || h === "vencimento_" + n || h === "venc" + n || h === "venc_" + n);
+      if (iv >= 0 || id >= 0) paresNumerados.push({ iv, id });
+    }
+    const usaMultiplosBoletos = paresNumerados.length > 0;
+    const idxValor = header.findIndex((h) => h === "valor");
+    const idxVenc = header.findIndex((h) => h.includes("vencimento") || h.includes("venc"));
+    if (filtroVenc !== "todos" && !usaMultiplosBoletos && idxVenc < 0) { setErro("Pra filtrar por vencimento, o CSV precisa ter a coluna 'vencimento' (ou vencimento1, vencimento2...)."); return null; }
+
     const idxVars = [];
     for (let n = 1; n <= Math.max(nVars, 1); n++) {
       idxVars.push(header.findIndex((h) => h === "variavel" + n || h === "var" + n));
@@ -1291,15 +1328,22 @@ function DisparoScreen() {
         const idx = idxVars[n];
         variaveis.push(idx >= 0 && l[idx] ? l[idx] : (n === 0 ? nome : ""));
       }
+      let dividas = [];
+      if (usaMultiplosBoletos) {
+        dividas = paresNumerados.map(({ iv, id }) => ({
+          valor: iv >= 0 && l[iv] ? l[iv].replace(",", ".") : "",
+          vencimento: id >= 0 && l[id] ? paraDataISO(l[id]) : "",
+        })).filter((d) => d.valor || d.vencimento);
+      }
+      const perfil = { curso: idxCurso >= 0 ? l[idxCurso] : "", cpf: idxCpf >= 0 ? l[idxCpf] : "", email: idxEmail >= 0 ? l[idxEmail] : "" };
+      const resumo = usaMultiplosBoletos ? (proximoPendenteCliente(dividas) || {}) : {
+        valor: idxValor >= 0 ? l[idxValor].replace(",", ".") : "",
+        vencimento: idxVenc >= 0 ? paraDataISO(l[idxVenc]) : "",
+      };
       return {
         nome, telefone: l[idxTel], variaveis,
-        divida: {
-          valor: idxValor >= 0 ? l[idxValor].replace(",", ".") : "",
-          vencimento: idxVenc >= 0 ? paraDataISO(l[idxVenc]) : "",
-          curso: idxCurso >= 0 ? l[idxCurso] : "",
-          cpf: idxCpf >= 0 ? l[idxCpf] : "",
-          email: idxEmail >= 0 ? l[idxEmail] : "",
-        },
+        dividas,
+        divida: { ...perfil, ...resumo },
       };
     }).filter((c) => c.telefone);
 
@@ -1434,6 +1478,7 @@ function DisparoScreen() {
                 <I.upload className="ic" />
                 <div className="t">{arquivoNome || "Clique para escolher o arquivo CSV"}</div>
                 <div className="s">colunas: nome, telefone, valor, vencimento, curso{nVars > 0 ? ", variavel1..." + nVars : ""}</div>
+                <div className="s">tem mais de um boleto por aluno? use valor1/vencimento1, valor2/vencimento2... (até 10)</div>
                 <div className="s">vencimento aceita 12/07/2026 ou 2026-07-12 — os dois formatos funcionam</div>
                 <div className="s">opcionais: cpf, email</div>
               </label>
@@ -1466,13 +1511,14 @@ function DisparoScreen() {
           {contatos.length > 0 && (
             <div className="contatos-preview">
               <table>
-                <thead><tr><th>Nome</th><th>Telefone</th><th>Valor</th><th>Vencimento</th><th>Curso</th><th>CPF</th><th>E-mail</th>{nVars > 0 && <th>Variáveis</th>}<th></th></tr></thead>
+                <thead><tr><th>Nome</th><th>Telefone</th><th>Valor</th><th>Vencimento</th><th>Boletos</th><th>Curso</th><th>CPF</th><th>E-mail</th>{nVars > 0 && <th>Variáveis</th>}<th></th></tr></thead>
                 <tbody>
                   {contatos.map((c, i) => (
                     <tr key={i}>
                       <td>{c.nome || "—"}</td><td>{c.telefone}</td>
                       <td>{c.divida?.valor ? fmtMoeda(c.divida.valor) : "—"}</td>
                       <td>{c.divida?.vencimento || "—"}</td>
+                      <td>{c.dividas && c.dividas.length > 1 ? `${c.dividas.length} boletos (próximo)` : "1"}</td>
                       <td>{c.divida?.curso || "—"}</td>
                       <td>{c.divida?.cpf || "—"}</td>
                       <td>{c.divida?.email || "—"}</td>

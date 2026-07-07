@@ -615,14 +615,26 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
   }
   function normalizaPapel(p) { return (p === "negociadora" || p === "completa") ? p : "sdr"; }
 
-  function blocoComplianceEDadosDivida(nomeLead, divida) {
+  function blocoComplianceEDadosDivida(nomeLead, divida, dividas) {
     const P = [];
     const hoje = new Date();
     const hojeISO = hoje.toISOString().slice(0, 10);
     const hojeExtenso = hoje.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" });
     P.push(`DATA DE HOJE: ${hojeExtenso} (${hojeISO}). Use essa data como referência real pra calcular qualquer prazo, vencimento ou "mês que vem" — NUNCA calcule data de cabeça sem se basear nela, e NUNCA proponha ou registre uma data de vencimento anterior a hoje.`);
     if (nomeLead) P.push(`O nome do aluno com quem você fala é: ${nomeLead}.`);
-    if (divida && (divida.valor || divida.vencimento)) {
+
+    if (Array.isArray(dividas) && dividas.length > 1) {
+      // aluno tem VÁRIOS boletos/meses em aberto — lista todos, não só um
+      const linhasBoletos = dividas.map((d, i) => {
+        const atraso = diasDeAtraso(d.vencimento);
+        const situacao = d.pago ? "PAGO" : atraso === null ? "sem data" : atraso > 0 ? `${atraso} dia(s) em atraso` : atraso < 0 ? "ainda não venceu" : "vence hoje";
+        return `  ${i + 1}. ${d.vencimento ? fmtDataBR(d.vencimento) : "(sem data)"} — ${d.valor ? fmtMoedaBR(d.valor) : "(sem valor)"} — ${situacao}`;
+      });
+      const totalPendente = dividas.filter((d) => !d.pago).reduce((s, d) => s + (d.valor || 0), 0);
+      P.push(`\nBOLETOS/MESES DESSE ALUNO (use exatamente esses valores e datas, nunca invente):\n${linhasBoletos.join("\n")}\n  Total pendente somando todos: ${fmtMoedaBR(totalPendente)}`);
+      if (divida && divida.curso) P.push(`Curso do aluno: ${divida.curso}`);
+      P.push(`\nIMPORTANTE SOBRE VÁRIOS BOLETOS: lembre o aluno de forma clara quais meses estão pendentes (não só o mais atrasado). Você pode propor negociar os meses futuros também (antecipar, parcelar tudo junto, etc.), não só o mais vencido. Sempre que falar de valor, deixe claro a qual mês/boleto se refere.`);
+    } else if (divida && (divida.valor || divida.vencimento)) {
       const atraso = diasDeAtraso(divida.vencimento);
       const linhas = [];
       if (divida.valor) linhas.push(`Valor em aberto: ${fmtMoedaBR(divida.valor)}`);
@@ -645,14 +657,14 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
 
   // IA 1 — SDR: entende o motivo da inadimplência, coleta informações, e decide se
   // encaminha pra Negociadora (lead disposto a resolver) ou direto pro humano (caso complexo/disputa)
-  function montarPromptSDR(ia, nomeLead, divida) {
+  function montarPromptSDR(ia, nomeLead, divida, dividas) {
     const c = ia.config || {};
     const P = [];
     P.push(`Você é ${ia.nome}, atendente do setor financeiro da Escola Instructiva, primeiro contato pelo WhatsApp com um aluno em atraso de pagamento.`);
     P.push(`Seu tom de voz é ${TOM_LABEL[c.tomVoz] || "profissional"}, sempre respeitoso.`);
     P.push(`\nSEU OBJETIVO (você NÃO negocia valores nem propõe parcelamento — isso é outra etapa): confirmar que fala com a pessoa certa, entender o MOTIVO do atraso (dificuldade financeira, esqueceu, discorda da cobrança, etc.) e sinalizar se o aluno está disposto a regularizar.`);
     if (c.objetivo) P.push(c.objetivo);
-    P.push(blocoComplianceEDadosDivida(nomeLead, divida));
+    P.push(blocoComplianceEDadosDivida(nomeLead, divida, dividas));
     if (c.quemEla) P.push(`\nQUEM VOCÊ É:\n${c.quemEla}`);
     if (c.comoEscreve) P.push(`\nCOMO VOCÊ ESCREVE:\n${c.comoEscreve}`);
     if (c.sempreFaz) P.push(`\nVOCÊ SEMPRE:\n${c.sempreFaz}`);
@@ -684,7 +696,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
 
   // IA 2 — Negociadora: já assumiu que o aluno quer resolver; apresenta propostas
   // dentro das regras configuradas; fecha (propõe formalmente) ou escala pro humano
-  function montarPromptNegociadora(ia, nomeLead, divida, motivo) {
+  function montarPromptNegociadora(ia, nomeLead, divida, motivo, dividas) {
     const c = ia.config || {};
     const P = [];
     P.push(`Você é ${ia.nome}, negociadora do setor financeiro da Escola Instructiva, dando continuidade a uma conversa de cobrança pelo WhatsApp — o aluno já confirmou identidade e disposição pra resolver a pendência.`);
@@ -692,7 +704,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (c.objetivo) P.push(`SEU OBJETIVO: ${c.objetivo}`);
     else P.push(`SEU OBJETIVO: apresentar as formas de pagamento e fechar um acordo dentro das regras abaixo.`);
     if (motivo) P.push(`\nO motivo do atraso que o aluno relatou anteriormente: ${motivo}. Use isso com empatia, sem ficar repetindo.`);
-    P.push(blocoComplianceEDadosDivida(nomeLead, divida));
+    P.push(blocoComplianceEDadosDivida(nomeLead, divida, dividas));
     if (c.quemEla) P.push(`\nQUEM VOCÊ É:\n${c.quemEla}`);
     if (c.comoEscreve) P.push(`\nCOMO VOCÊ ESCREVE:\n${c.comoEscreve}`);
     if (c.sempreFaz) P.push(`\nVOCÊ SEMPRE:\n${c.sempreFaz}`);
@@ -731,13 +743,13 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
 
   // IA ÚNICA — qualifica e negocia na mesma conversa, sem passagem entre "cérebros".
   // Mais simples de configurar, mas sem a trava de nunca falar de dinheiro antes de qualificar.
-  function montarPromptCompleta(ia, nomeLead, divida) {
+  function montarPromptCompleta(ia, nomeLead, divida, dividas) {
     const c = ia.config || {};
     const P = [];
     P.push(`Você é ${ia.nome}, atendente do setor financeiro da Escola Instructiva, falando pelo WhatsApp com um aluno em atraso de pagamento. Você cuida da conversa do início ao fim: confirma identidade, entende o motivo do atraso, e conduz a negociação dentro das regras abaixo.`);
     P.push(`Seu tom de voz é ${TOM_LABEL[c.tomVoz] || "profissional"}, sempre respeitoso.`);
     if (c.objetivo) P.push(`SEU OBJETIVO: ${c.objetivo}`);
-    P.push(blocoComplianceEDadosDivida(nomeLead, divida));
+    P.push(blocoComplianceEDadosDivida(nomeLead, divida, dividas));
     if (c.quemEla) P.push(`\nQUEM VOCÊ É:\n${c.quemEla}`);
     if (c.comoEscreve) P.push(`\nCOMO VOCÊ ESCREVE:\n${c.comoEscreve}`);
     if (c.sempreFaz) P.push(`\nVOCÊ SEMPRE:\n${c.sempreFaz}`);
@@ -785,10 +797,11 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
   function montarSystemPrompt(ia, chat) {
     const nomeLead = chat ? chat.nome : "";
     const divida = chat ? chat.divida : null;
+    const dividas = chat ? chat.dividas : null;
     const motivo = chat ? chat.motivoInadimplencia : "";
-    if (ia.papel === "negociadora") return montarPromptNegociadora(ia, nomeLead, divida, motivo);
-    if (ia.papel === "completa") return montarPromptCompleta(ia, nomeLead, divida);
-    return montarPromptSDR(ia, nomeLead, divida);
+    if (ia.papel === "negociadora") return montarPromptNegociadora(ia, nomeLead, divida, motivo, dividas);
+    if (ia.papel === "completa") return montarPromptCompleta(ia, nomeLead, divida, dividas);
+    return montarPromptSDR(ia, nomeLead, divida, dividas);
   }
 
   async function chamarModelo(systemPrompt, historico) {
@@ -1142,6 +1155,28 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     if (d.email) out.email = lim(String(d.email).trim(), 120);
     return Object.keys(out).length ? out : null;
   }
+  // valida a lista de boletos de um mesmo aluno (várias parcelas/meses diferentes) —
+  // cada item é só valor+vencimento, os outros dados (curso, cpf, email) ficam no contato
+  function sanitizaDividas(arr) {
+    if (!Array.isArray(arr)) return [];
+    return arr.map((d) => {
+      if (!d) return null;
+      const out = {};
+      if (d.valor !== undefined && d.valor !== "") out.valor = Number(d.valor) || 0;
+      if (d.vencimento) out.vencimento = lim(d.vencimento, 10);
+      if (!out.valor && !out.vencimento) return null;
+      out.pago = !!d.pago;
+      return out;
+    }).filter(Boolean).slice(0, 10);
+  }
+  // escolhe o boleto mais relevante de uma lista pra usar como "resumo" (compatibilidade
+  // com telas/automação que só olham um valor/vencimento só) — o próximo pendente por data
+  function proximoPendente(dividas) {
+    if (!Array.isArray(dividas) || !dividas.length) return null;
+    const pendentes = dividas.filter((d) => !d.pago && d.vencimento);
+    if (!pendentes.length) return dividas[0];
+    return pendentes.slice().sort((a, b) => a.vencimento.localeCompare(b.vencimento))[0];
+  }
 
   app.post("/api/cobranca/disparar", auth, gerenteOnly, async (req, res) => {
     garantirEstrutura();
@@ -1164,7 +1199,11 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       numeroId: numeroCfg.id, template: templateName, idioma,
       iaId: iaCampanha ? iaCampanha.id : null, iaNome: iaCampanha ? iaCampanha.nome : null,
       enviados: 0, entregues: 0, lidos: 0, responderam: 0, falhas: 0, total: contatos.length,
-      pendentes: contatos.map((c) => ({ telefone: c.telefone, nome: c.nome || "", variaveis: c.variaveis || [], divida: sanitizaDivida(c.divida) })),
+      pendentes: contatos.map((c) => ({
+        telefone: c.telefone, nome: c.nome || "", variaveis: c.variaveis || [],
+        divida: sanitizaDivida(c.divida),
+        dividas: sanitizaDividas(c.dividas),
+      })),
       envios: [], // log permanente por contato (telefone, nome, status, erro, ts) — sobrevive mesmo depois da fila esvaziar
       status: "rodando", criadoEm: Date.now(),
     };
@@ -1202,7 +1241,13 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
         chat.origemDisparo = true; chat.campanha = campanha.nome; chat.campanhaId = campanha.id;
         chat.iaId = campanha.iaId || null; chat.iaPausada = false;
         if (chat.respondeu === undefined) chat.respondeu = false;
-        if (c.divida) chat.divida = c.divida;
+        if (c.dividas && c.dividas.length) {
+          chat.dividas = c.dividas;
+          const prox = proximoPendente(c.dividas);
+          chat.divida = { ...(c.divida || {}), ...(prox || {}) }; // mantém curso/cpf/email do c.divida, valor/vencimento do próximo pendente
+        } else if (c.divida) {
+          chat.divida = c.divida;
+        }
         if (!chat.estadoCobranca) chat.estadoCobranca = "nao_contatado";
         const ts = Date.now();
         chat.mensagens.push({ role: "me", content: `[disparo] ${campanha.template}`, ts, template: true });
@@ -1360,6 +1405,34 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       // formatos de áudio gravados no navegador nem sempre são aceitos pelo WhatsApp
       // (ele exige AAC, AMR, MP3, MP4 ou OGG/Opus) — se a Meta recusar, o erro chega aqui
       res.status(500).json({ error: "A Meta recusou esse áudio: " + e.message + " — tenta gravar de novo ou usa outro navegador." });
+    }
+  });
+
+  /* humano anexa um arquivo (boleto, comprovante, etc.) e manda como documento */
+  app.post("/api/cobranca/chats/:id/send-document", auth, async (req, res) => {
+    const chat = db.waChats[req.params.id];
+    if (!chat || chat.canal !== "oficial") return res.status(404).json({ error: "Conversa não encontrada" });
+    if (req.user.role !== "gerente" && chat.atendenteId !== req.user.id) return res.status(403).json({ error: "Sem acesso a essa conversa" });
+    const numeroCfg = acharNumero(chat.numeroOficialId);
+    if (!numeroCfg) return res.status(400).json({ error: "Número não encontrado" });
+    const b = req.body || {};
+    if (!b.arquivoBase64) return res.status(400).json({ error: "Arquivo vazio" });
+    if (!b.filename) return res.status(400).json({ error: "Falta o nome do arquivo" });
+    try {
+      const buffer = Buffer.from(b.arquivoBase64, "base64");
+      const mimetype = b.mimetype || "application/octet-stream";
+      const ehImagem = /^image\//.test(mimetype);
+      const tipoWpp = ehImagem ? "image" : "document";
+      const mediaId = await uploadMidiaMeta(numeroCfg, buffer, mimetype, b.filename);
+      await enviarMidiaOficial(numeroCfg, chat.numero, tipoWpp, mediaId, b.legenda || "", b.filename);
+      const arquivo = salvarMidiaLocal(buffer, mimetype, "humano");
+      const ts = Date.now();
+      chat.mensagens.push({ role: "me", content: b.legenda || (ehImagem ? "📷 Foto" : "📄 " + b.filename), ts, tipo: tipoWpp, arquivo, mimetype, filename: b.filename });
+      chat.atualizadoEm = ts;
+      salvar();
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: "A Meta recusou esse arquivo: " + e.message });
     }
   });
 
@@ -1684,8 +1757,9 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     for (const c of comDivida) {
       const estado = c.estadoCobranca || "nao_contatado";
       if (porEstado[estado] !== undefined) porEstado[estado]++;
-      totalOriginal += Number(c.divida.valor) || 0;
-      if (estado !== "pago") totalPendente += Number(c.divida.valor) || 0;
+      const somaBoletos = Array.isArray(c.dividas) && c.dividas.length ? c.dividas.reduce((s, d) => s + (Number(d.valor) || 0), 0) : (Number(c.divida.valor) || 0);
+      totalOriginal += somaBoletos;
+      if (estado !== "pago") totalPendente += somaBoletos;
     }
     let totalRecuperado = 0, parcelasPendentes = 0, parcelasAtrasadas = 0;
     const acordos = db.cobranca.acordos || [];

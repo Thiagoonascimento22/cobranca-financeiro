@@ -87,6 +87,7 @@ export const api = {
   chat: (id) => req("GET", "/api/cobranca/chats/" + id),
   enviar: (id, texto) => req("POST", "/api/cobranca/chats/" + id + "/send", { texto }),
   enviarAudio: (id, audioBase64, mimetype) => req("POST", "/api/cobranca/chats/" + id + "/send-audio", { audioBase64, mimetype }),
+  enviarDocumento: (id, arquivoBase64, mimetype, filename, legenda) => req("POST", "/api/cobranca/chats/" + id + "/send-document", { arquivoBase64, mimetype, filename, legenda }),
   atribuir: (id, atendenteId) => req("POST", "/api/cobranca/chats/" + id + "/atribuir", { atendenteId }),
   atendentesLista: () => req("GET", "/api/cobranca/atendentes-lista"),
   encerrar: (id, encerrar) => req("POST", "/api/cobranca/chats/" + id + "/encerrar", { encerrar }),
