@@ -716,7 +716,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     P.push(`- NUNCA exponha a dívida ou dados do aluno pra terceiros (família, colegas, quem responder no lugar dele).`);
     P.push(`- NUNCA use tom de ameaça, constrangimento ou pressão abusiva. Não use "negativação", "protesto" ou "ação judicial" como ameaça.`);
     P.push(`- NUNCA confirme ou negue dívida pra alguém que não comprovou ser o titular.`);
-    P.push(`\nÁUDIO OU TEXTO: por padrão você responde em texto. Se o aluno pedir explicitamente pra você responder por áudio/voz (de qualquer jeito que ele formular isso), inclua a tag [MODO_AUDIO] no final da sua resposta. Se o aluno pedir pra você parar de mandar áudio e voltar a escrever (de qualquer jeito que ele formular isso — "não consigo ouvir", "manda por texto", "sem áudio", etc.), inclua a tag [MODO_TEXTO] no final. Essas tags nunca aparecem pro aluno.`);
+    P.push(`\nÁUDIO OU TEXTO: por padrão você responde em texto. Se o aluno pedir explicitamente pra você responder por áudio/voz (de qualquer jeito que ele formular isso), inclua a tag [MODO_AUDIO] no final da sua resposta. Se o aluno mencionar a palavra "texto" de QUALQUER jeito (ex.: "pode só mandar texto?", "manda texto", "prefiro texto", "só texto", "não consigo ouvir", "sem áudio") — SEMPRE inclua a tag [MODO_TEXTO] no final dessa resposta, sem exceção, mesmo que você já ache que ia responder em texto de qualquer forma. Essa tag é obrigatória sempre que a palavra "texto" aparecer na fala do aluno — não é opcional. As tags nunca aparecem pro aluno.`);
     P.push(`\nMENSAGENS SEPARADAS: pessoas de verdade no WhatsApp mandam vários balões curtos, não um texto único. Se sua resposta tiver mais de uma ideia (ex.: uma confirmação + uma pergunta, ou uma explicação + uma proposta), separe cada balão com uma linha em branco entre eles — cada bloco separado por linha em branco vira uma mensagem própria. Não abuse: no máximo 2-3 balões por resposta, cada um curto.`);
     P.push(`\nSTATUS DA CONVERSA: em TODA resposta, no final de tudo (depois de qualquer outra tag), inclua a tag [STATUS: resumo] com um resumo curto (uma frase, máximo ~15 palavras) de onde a conversa está agora — o que já foi combinado, o que falta, ou o que você está esperando do aluno. Exemplos: [STATUS: aluno confirmou identidade, ainda não disse o motivo do atraso], [STATUS: aluno disse que paga até sexta, aguardando comprovante], [STATUS: aluno pediu desconto maior que o permitido, escalado pro humano]. Essa tag nunca aparece pro aluno — é só controle interno.`);
     return P.join("\n");
@@ -1024,10 +1024,16 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
       if (pedirModoTexto) chat.prefereAudio = false;
       else if (pedirModoAudio) chat.prefereAudio = true;
       else {
-        const PEDIU_TEXTO = ["manda texto", "manda por texto", "pode escrever", "por escrito", "não consigo ouvir", "nao consigo ouvir", "não posso ouvir", "nao posso ouvir", "não dá pra ouvir", "nao da pra ouvir", "não escuto", "nao escuto", "sem áudio", "sem audio", "não manda áudio", "nao manda audio", "não manda mais áudio", "nao manda mais audio", "só texto", "so texto", "prefiro texto", "pode ser texto", "responde em texto", "fala por texto", "sem voz"];
-        const PEDIU_AUDIO = ["manda áudio", "manda audio", "pode falar", "manda um áudio", "manda um audio", "fala por áudio", "fala por audio", "manda voz", "responde em áudio", "responde em audio", "prefiro áudio", "prefiro audio", "quero ouvir"];
-        if (PEDIU_TEXTO.some((s) => txtLead.includes(s))) chat.prefereAudio = false;
-        else if (PEDIU_AUDIO.some((s) => txtLead.includes(s))) chat.prefereAudio = true;
+        // rede de segurança BEM mais ampla: em vez de tentar prever toda variação de frase
+        // ("manda texto", "mandar texto", "pode só texto", "só texto por favor"...), a simples
+        // presença da palavra "texto" na fala do aluno já é sinal forte o suficiente de que ele
+        // quer parar de receber áudio — não existe outro motivo real pra alguém escrever isso
+        // numa cobrança. O mesmo vale pra "áudio"/"voz" no sentido contrário.
+        const normLead = txtLead.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // tira acento, pra "audio"/"áudio" bater igual
+        const pediuTexto = /texto|escrit[oa]/.test(normLead);
+        const pediuAudio = !pediuTexto && /audio|\bvoz\b/.test(normLead);
+        if (pediuTexto) chat.prefereAudio = false;
+        else if (pediuAudio) chat.prefereAudio = true;
       }
 
       const respostaAudioHabilitada = !!(ia.config && ia.config.respostaAudio);
