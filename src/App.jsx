@@ -1309,15 +1309,21 @@ function DisparoScreen() {
     if (idxTel < 0) { setErro("Não achei a coluna de telefone no CSV. Cabeçalho encontrado: " + header.join(", ")); return null; }
 
     // detecta pares numerados valor1/vencimento1 ... valor10/vencimento10 (um boleto por mês/parcela).
-    // se não achar nenhum par numerado, cai no modo antigo: colunas únicas "valor" e "vencimento".
-    const paresNumerados = [];
-    for (let n = 1; n <= 10; n++) {
-      const iv = header.findIndex((h) => h === "valor" + n || h === "valor_" + n);
-      const id = header.findIndex((h) => h === "vencimento" + n || h === "vencimento_" + n || h === "venc" + n || h === "venc_" + n);
-      if (iv >= 0 || id >= 0) paresNumerados.push({ iv, id });
-    }
+    // tolerante a espaço, underscore, hífen etc no nome da coluna (ex: "valor 1", "Valor_01", "vencimento-2")
+    // — normaliza tirando tudo que não é letra/número antes de comparar, pra não perder nenhuma variação
+    // que uma planilha real do financeiro venha a usar.
+    function normCol(h) { return String(h || "").replace(/[^a-z0-9]/g, ""); }
+    const paresPorNumero = {};
+    header.forEach((h, idx) => {
+      const n = normCol(h);
+      let m = n.match(/^valor0*(\d+)$/);
+      if (m) { paresPorNumero[m[1]] = paresPorNumero[m[1]] || {}; paresPorNumero[m[1]].iv = idx; return; }
+      m = n.match(/^(?:vencimento|venc)0*(\d+)$/);
+      if (m) { paresPorNumero[m[1]] = paresPorNumero[m[1]] || {}; paresPorNumero[m[1]].id = idx; }
+    });
+    const paresNumerados = Object.keys(paresPorNumero).sort((a, b) => Number(a) - Number(b)).map((k) => ({ iv: paresPorNumero[k].iv ?? -1, id: paresPorNumero[k].id ?? -1 }));
     const usaMultiplosBoletos = paresNumerados.length > 0;
-    const idxValor = header.findIndex((h) => h === "valor");
+    const idxValor = header.findIndex((h) => normCol(h) === "valor");
     const idxVenc = header.findIndex((h) => h.includes("vencimento") || h.includes("venc"));
     if (filtroVenc !== "todos" && !usaMultiplosBoletos && idxVenc < 0) { setErro("Pra filtrar por vencimento, o CSV precisa ter a coluna 'vencimento' (ou vencimento1, vencimento2...)."); return null; }
 
