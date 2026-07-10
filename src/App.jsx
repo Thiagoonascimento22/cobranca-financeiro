@@ -985,7 +985,7 @@ function IABuilder({ ia, papelInicial, iasNegociadoras, onClose, onSaved }) {
                   <div className="agx-field"><label>Parcelamento máximo sem aprovação humana</label><input className="agx-input" type="number" min="0" max="60" value={c.parcelamentoMax} onChange={(e) => set("parcelamentoMax", Number(e.target.value))} /></div>
                   <div className="agx-field"><label>Desconto máximo à vista (%) sem aprovação</label><input className="agx-input" type="number" min="0" max="100" value={c.descontoMaximoPct} onChange={(e) => set("descontoMaximoPct", Number(e.target.value))} /></div>
                 </div>
-                <div className="agx-field"><label>Regras extras de negociação</label><textarea className="agx-input" rows={4} value={c.regrasNegociacao} onChange={(e) => set("regrasNegociacao", e.target.value)} placeholder="Ex: nunca oferecer desconto pra quem está a menos de 30 dias de atraso" /></div>
+                <div className="agx-field"><label>Regras extras de negociação</label><textarea className="agx-input" rows={10} value={c.regrasNegociacao} onChange={(e) => set("regrasNegociacao", e.target.value)} placeholder="Ex: nunca oferecer desconto pra quem está a menos de 30 dias de atraso" /></div>
               </div>
             )}
             {secao === "objecoes" && (

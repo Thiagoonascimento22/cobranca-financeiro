@@ -669,7 +669,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     c.formasPagamento = lim(b.formasPagamento, 500);
     c.parcelamentoMax = Math.max(0, Math.min(60, Number(b.parcelamentoMax) || 0));
     c.descontoMaximoPct = Math.max(0, Math.min(100, Number(b.descontoMaximoPct) || 0));
-    c.regrasNegociacao = lim(b.regrasNegociacao, 4000);
+    c.regrasNegociacao = lim(b.regrasNegociacao, 40000);
     c.respostaAudio = !!b.respostaAudio;
     return c;
   }
