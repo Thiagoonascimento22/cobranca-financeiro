@@ -72,7 +72,10 @@ function loadDB() {
       if (!db.waChats || typeof db.waChats !== "object") db.waChats = {};
       if (!db.cobranca || typeof db.cobranca !== "object") db.cobranca = {};
       db.users.forEach((u) => {
-        if (u.token === undefined) u.token = null;
+        // migração: usuário antigo tinha 1 token só; agora vira uma lista, pra várias pessoas
+        // (ou várias abas) usarem o mesmo login sem uma sessão derrubar a outra
+        if (!Array.isArray(u.tokens)) u.tokens = u.token ? [u.token] : [];
+        delete u.token;
       });
       console.log(`Banco carregado. Usuários: ${db.users.length} | Conversas: ${Object.keys(db.waChats).length}`);
     } else {
@@ -110,13 +113,13 @@ function proximoId(prefixo) {
    ============================================================ */
 function semSenha(u) {
   if (!u) return u;
-  const { senha, token, ...resto } = u;
+  const { senha, tokens, ...resto } = u;
   return resto;
 }
 
 function auth(req, res, next) {
   const t = (req.headers.authorization || "").replace("Bearer ", "").trim();
-  const user = db.users.find((u) => u.token && u.token === t);
+  const user = db.users.find((u) => Array.isArray(u.tokens) && u.tokens.includes(t) && t);
   if (!user || !user.ativo)
     return res.status(401).json({ error: "Não autenticado" });
   req.user = user;
@@ -137,9 +140,12 @@ app.post("/api/login", (req, res) => {
     return res.status(401).json({ error: "Login ou senha incorretos" });
   if (!user.ativo)
     return res.status(403).json({ error: "Usuário desativado" });
-  user.token = novoToken();
+  user.tokens = Array.isArray(user.tokens) ? user.tokens : [];
+  const novo = novoToken();
+  user.tokens.push(novo);
+  if (user.tokens.length > 15) user.tokens = user.tokens.slice(-15); // limite de sanidade, não cresce pra sempre
   saveSoon();
-  res.json({ token: user.token, user: semSenha(user) });
+  res.json({ token: novo, user: semSenha(user) });
 });
 
 app.get("/api/me", auth, (req, res) => res.json(semSenha(req.user)));

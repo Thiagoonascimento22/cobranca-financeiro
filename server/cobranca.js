@@ -651,10 +651,10 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     const b = raw || {};
     c.tomVoz = lim(b.tomVoz || "profissional", 40);
     c.objetivo = lim(b.objetivo, 2000);
-    c.quemEla = lim(b.quemEla, 6000);
-    c.comoEscreve = lim(b.comoEscreve, 3000);
-    c.sempreFaz = lim(b.sempreFaz, 4000);
-    c.nuncaFaz = lim(b.nuncaFaz, 4000);
+    c.quemEla = lim(b.quemEla, 100000);
+    c.comoEscreve = lim(b.comoEscreve, 100000);
+    c.sempreFaz = lim(b.sempreFaz, 100000);
+    c.nuncaFaz = lim(b.nuncaFaz, 100000);
     c.objecoes = Array.isArray(b.objecoes) ? b.objecoes.slice(0, 50).map((x) => ({ objecao: lim(x.objecao, 300), resposta: lim(x.resposta, 2000) })) : [];
     c.faq = Array.isArray(b.faq) ? b.faq.slice(0, 80).map((x) => ({ pergunta: lim(x.pergunta, 300), resposta: lim(x.resposta, 2000) })) : [];
     c.pbAbertura = lim(b.pbAbertura, 3000);
@@ -669,7 +669,7 @@ export function instalarCobranca({ app, getDb, saveDB, proximoId, auth, gerenteO
     c.formasPagamento = lim(b.formasPagamento, 500);
     c.parcelamentoMax = Math.max(0, Math.min(60, Number(b.parcelamentoMax) || 0));
     c.descontoMaximoPct = Math.max(0, Math.min(100, Number(b.descontoMaximoPct) || 0));
-    c.regrasNegociacao = lim(b.regrasNegociacao, 40000);
+    c.regrasNegociacao = lim(b.regrasNegociacao, 100000);
     c.respostaAudio = !!b.respostaAudio;
     return c;
   }

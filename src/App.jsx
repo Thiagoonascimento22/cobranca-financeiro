@@ -969,11 +969,11 @@ function IABuilder({ ia, papelInicial, iasNegociadoras, onClose, onSaved }) {
             {secao === "persona" && (
               <div>
                 <h4 className="agx-h">Personalidade</h4>
-                <div className="agx-field"><label>Quem ela é</label><textarea className="agx-input" rows={4} value={c.quemEla} onChange={(e) => set("quemEla", e.target.value)} placeholder="Ex: Você é a Bia, atendente do financeiro da Escola Instructiva..." /></div>
-                <div className="agx-field"><label>Como escreve</label><textarea className="agx-input" rows={3} value={c.comoEscreve} onChange={(e) => set("comoEscreve", e.target.value)} /></div>
+                <div className="agx-field"><label>Quem ela é</label><textarea className="agx-input" rows={9} value={c.quemEla} onChange={(e) => set("quemEla", e.target.value)} placeholder="Ex: Você é a Bia, atendente do financeiro da Escola Instructiva..." /></div>
+                <div className="agx-field"><label>Como escreve</label><textarea className="agx-input" rows={8} value={c.comoEscreve} onChange={(e) => set("comoEscreve", e.target.value)} /></div>
                 <div className="agx-grid2">
-                  <div className="agx-field"><label>SEMPRE faz</label><textarea className="agx-input" rows={5} value={c.sempreFaz} onChange={(e) => set("sempreFaz", e.target.value)} /></div>
-                  <div className="agx-field"><label>NUNCA faz</label><textarea className="agx-input" rows={5} value={c.nuncaFaz} onChange={(e) => set("nuncaFaz", e.target.value)} /></div>
+                  <div className="agx-field"><label>SEMPRE faz</label><textarea className="agx-input" rows={8} value={c.sempreFaz} onChange={(e) => set("sempreFaz", e.target.value)} /></div>
+                  <div className="agx-field"><label>NUNCA faz</label><textarea className="agx-input" rows={8} value={c.nuncaFaz} onChange={(e) => set("nuncaFaz", e.target.value)} /></div>
                 </div>
               </div>
             )}
